@@ -8,6 +8,11 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase SDK Start -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+    <!-- Firebase SDK End -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { background-color: #f3f4f6; }
@@ -116,49 +121,69 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
 
-        // ─────────────────────────── API 헬퍼 ───────────────────────────
+        // ─────────────────────────── Firebase 초기화 ───────────────────────────
+        const firebaseConfig = {
+            apiKey: "AIzaSyAkFBrT8Zibdtaw6iw6Qgp-nrF3wN2V7ek",
+            authDomain: "dcl100l.firebaseapp.com",
+            projectId: "dcl100l",
+            storageBucket: "dcl100l.firebasestorage.app",
+            messagingSenderId: "423636580318",
+            appId: "1:423636580318:web:316191480f56aa407a0f4f",
+            measurementId: "G-7M2LYNSKJX"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+
+        // ─────────────────────────── API 헬퍼 (Firebase) ───────────────────────────
         const API = {
-            getData: () => fetch('/api/data').then(r => r.json()),
-            saveAll: (assemblies, currentAsmId) =>
-                fetch('/api/assemblies/' + currentAsmId, { 
-                    method: 'PUT', 
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ assemblies, currentAsmId })
-                }).then(() =>
-                    fetch('/api/current', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ currentAsmId })
-                    })
-                ),
-            saveAssembly: (asm) =>
-                fetch(`/api/assemblies/${asm.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(asm)
-                }).then(r => r.json()),
-            addAssembly: (asm) =>
-                fetch('/api/assemblies', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(asm)
-                }).then(r => r.json()),
-            deleteAssembly: (id) =>
-                fetch(`/api/assemblies/${id}`, { method: 'DELETE' }).then(r => r.json()),
-            setCurrent: (id) =>
-                fetch('/api/current', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ currentAsmId: id })
-                }),
+            getData: async () => {
+                const doc = await db.collection('app').doc('state').get();
+                return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null };
+            },
+            saveAll: async (assemblies, currentAsmId) => {
+                await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+            },
+            saveAssembly: async (asm) => {
+                const doc = await db.collection('app').doc('state').get();
+                if (doc.exists) {
+                    let { assemblies, currentAsmId } = doc.data();
+                    assemblies = assemblies.map(a => a.id === asm.id ? asm : a);
+                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                }
+            },
+            addAssembly: async (asm) => {
+                const doc = await db.collection('app').doc('state').get();
+                if (doc.exists) {
+                    let { assemblies, currentAsmId } = doc.data();
+                    assemblies.push(asm);
+                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                } else {
+                    await db.collection('app').doc('state').set({ assemblies: [asm], currentAsmId: asm.id });
+                }
+            },
+            deleteAssembly: async (id) => {
+                const doc = await db.collection('app').doc('state').get();
+                if (doc.exists) {
+                    let { assemblies, currentAsmId } = doc.data();
+                    const filtered = assemblies.filter(a => a.id !== id);
+                    const newCurrentAsmId = currentAsmId === id ? (filtered[0]?.id || null) : currentAsmId;
+                    await db.collection('app').doc('state').set({ assemblies: filtered, currentAsmId: newCurrentAsmId });
+                    return { currentAsmId: newCurrentAsmId };
+                }
+                return { currentAsmId: null };
+            },
+            setCurrent: async (id) => {
+                await db.collection('app').doc('state').update({ currentAsmId: id });
+            },
             uploadImage: async (asmId, file) => {
-                const formData = new FormData();
-                formData.append('image', file);
-                const res = await fetch(`/api/assemblies/${asmId}/image`, {
-                    method: 'POST',
-                    body: formData
-                });
-                return res.json();
+                const ext = file.name.split('.').pop();
+                const storageRef = storage.ref(`images/${asmId}_${Date.now()}.${ext}`);
+                await storageRef.put(file);
+                const url = await storageRef.getDownloadURL();
+                return { imageUrl: url };
             }
         };
 
