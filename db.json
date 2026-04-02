@@ -1,0 +1,158 @@
+{
+  "assemblies": [
+    {
+      "id": "asm_migrated",
+      "name": "LRF발사버튼 조립체",
+      "imageUrl": "/images/1.png",
+      "parts": [
+        {
+          "id": "part_5087",
+          "no": "5087",
+          "name": "LRF발사버튼 상측커버",
+          "stock": "5000",
+          "x": 11.499964461558445,
+          "y": 22.32513542402022,
+          "size": 32,
+          "fSize": 15,
+          "isLocked": false
+        },
+        {
+          "id": "part_7065",
+          "no": "7065",
+          "name": "LRF발사버튼 상측커버 오링",
+          "stock": "540",
+          "x": 11.117212233820869,
+          "y": 30.049499507549015,
+          "size": 32,
+          "fSize": 15,
+          "isLocked": false
+        },
+        {
+          "id": "part_5085",
+          "no": "5085",
+          "name": "LRF발사버튼",
+          "stock": "250",
+          "x": 16.954183706818895,
+          "y": 38.93980533953499,
+          "size": 32,
+          "fSize": 15,
+          "isLocked": false
+        },
+        {
+          "id": "part_5089",
+          "no": "5089",
+          "name": "LRF발사버튼 커버",
+          "stock": "56",
+          "x": 17.432623991490864,
+          "y": 46.37268398594949,
+          "size": 32,
+          "fSize": 15,
+          "isLocked": false
+        },
+        {
+          "id": "part_6991",
+          "no": "6991",
+          "name": "LRF발사버튼 PCB 조립체",
+          "stock": 2,
+          "x": 79.4384848849781,
+          "y": 26.697416980734634,
+          "size": 32,
+          "fSize": 15,
+          "isLocked": false
+        },
+        {
+          "id": "part_5374",
+          "no": "5374",
+          "name": "납작십자볼트 M2x4",
+          "stock": "200",
+          "x": 52.35876477254463,
+          "y": 49.72476651276387,
+          "size": 32,
+          "fSize": 15,
+          "isLocked": true
+        },
+        {
+          "id": "part_1775108858290_rvy22rs6x",
+          "no": "",
+          "name": "",
+          "stock": 0,
+          "x": 27.429348396935783,
+          "y": 65.85889378076708,
+          "size": 32,
+          "fSize": 14,
+          "isLocked": false
+        },
+        {
+          "id": "part_1775108878167_ux71c75zj",
+          "no": "5374",
+          "name": "납작머리집사 2*4",
+          "stock": "05",
+          "x": 50.732067804659934,
+          "y": 62.69586735242127,
+          "size": 32,
+          "fSize": 14,
+          "isLocked": false
+        }
+      ]
+    },
+    {
+      "id": "asm_1775114832413",
+      "name": "조립체 3",
+      "imageUrl": "/images/3.png",
+      "parts": [
+        {
+          "id": "part_1775114832413_0cssrhq43",
+          "no": "5062",
+          "name": "육각렌지볼트",
+          "stock": "560",
+          "x": 26.039165754049993,
+          "y": 8.219005490906445,
+          "size": 25,
+          "fSize": 15,
+          "isLocked": false
+        },
+        {
+          "id": "part_1775116493915_7sd5ps7n3",
+          "no": "",
+          "name": "",
+          "stock": 0,
+          "x": 4.226252138992613,
+          "y": 15.241155112041987,
+          "size": 32,
+          "fSize": 14,
+          "isLocked": false
+        },
+        {
+          "id": "part_1775117930385_racsoxlit",
+          "no": "",
+          "name": "",
+          "stock": 0,
+          "x": 48.67832609695045,
+          "y": 52.20681066481211,
+          "size": 32,
+          "fSize": 15,
+          "isLocked": false
+        }
+      ]
+    },
+    {
+      "id": "asm_1775114858841",
+      "name": "조립체 4",
+      "imageUrl": "/images/4.png",
+      "parts": [
+        {
+          "id": "part_1775114858842_ci5bfed5t",
+          "no": "",
+          "name": "",
+          "stock": 0,
+          "x": 50,
+          "y": 50,
+          "size": 32,
+          "fSize": 14,
+          "isLocked": false
+        }
+      ]
+    }
+  ],
+  "currentAsmId": "asm_migrated"
+}

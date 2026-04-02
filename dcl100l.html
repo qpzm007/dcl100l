@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 재고 및 파트리스트 관리 보드</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel (JS 컴파일러) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- FontAwesome Icons (React와 충돌 없는 CSS 방식) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { background-color: #f3f4f6; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .no-drag { -webkit-user-drag: none; user-select: none; }
+        
+        .editable-cell {
+            width: 100%;
+            background: transparent;
+            border: 1px solid transparent;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .editable-cell:hover { border-color: #e2e8f0; background: #fff; }
+        .editable-cell:focus { outline: none; border-color: #3b82f6; background: #fff; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+    </style>
+</head>
+<body>
+    <!-- 혹시라도 에러가 나면 화면에 표시해주는 안전장치 -->
+    <div id="error-log" style="color: red; padding: 20px; font-weight: bold; display: none;"></div>
+    <script>
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            document.getElementById('error-log').style.display = 'block';
+            document.getElementById('error-log').innerHTML += "시스템 오류가 발생했습니다: " + msg + "<br>";
+            return false;
+        };
+    </script>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const createDefaultPart = () => ({
+            id: `part_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            no: '',
+            name: '',
+            stock: 0,
+            x: 50, 
+            y: 50,
+            size: 32,  
+            fSize: 14,
+            isLocked: false // 위치 고정 여부 (기본: 이동 가능)
+        });
+
+        const createDefaultAssembly = (name = "새 조립체") => ({
+            id: `asm_${Date.now()}`,
+            name: name,
+            imageUrl: '1.png',
+            parts: [createDefaultPart()]
+        });
+
+        function App() {
+            const [assemblies, setAssemblies] = useState([]);
+            const [currentAsmId, setCurrentAsmId] = useState(null);
+            const [selectedPartId, setSelectedPartId] = useState(null);
+            const [dragState, setDragState] = useState(null);
+            const [isLoaded, setIsLoaded] = useState(false); // 로딩 상태 확인용
+            const [fullscreenPanel, setFullscreenPanel] = useState(null); // 전체화면 상태 ('left', 'right', null)
+
+            const containerRef = useRef(null);
+
+            useEffect(() => {
+                try {
+                    const savedData = localStorage.getItem('lrfInventoryV2');
+                    const oldData = localStorage.getItem('lrfInventoryApp');
+
+                    if (savedData) {
+                        const parsed = JSON.parse(savedData);
+                        // 데이터가 비어있는 오류 방지 로직 추가
+                        const asms = (parsed.assemblies && parsed.assemblies.length > 0) ? parsed.assemblies : [createDefaultAssembly()];
+                        setAssemblies(asms);
+                        setCurrentAsmId(parsed.currentAsmId || asms[0].id);
+                    } else if (oldData) {
+                        const parsedOld = JSON.parse(oldData);
+                        const migratedParts = [];
+                        
+                        const oldInitialData = [
+                            { id: '5087', name: 'LRF발사버튼 상측커버' }, { id: '7065', name: 'LRF발사버튼 상측커버 오링' },
+                            { id: '5085', name: 'LRF발사버튼' }, { id: '5089', name: 'LRF발사버튼 커버' },
+                            { id: '6991', name: 'LRF발사버튼 PCB 조립체' }, { id: '5088', name: 'LRF발사버튼 하측커버' },
+                            { id: '5086', name: 'LRF발사버튼 벨크로고정판' }, { id: '7066', name: 'LRF발사버튼 케이블고정 스프링' },
+                            { id: '0000_1', name: '케이블' }, { id: '5374', name: '납작머리십자볼트 M2x4' }
+                        ];
+
+                        oldInitialData.forEach(p => {
+                            migratedParts.push({
+                                id: `part_${p.id}`,
+                                no: p.id.replace('_1', ''),
+                                name: p.name,
+                                stock: parsedOld.inventory?.[p.id] || 0,
+                                x: parsedOld.positions?.[p.id]?.x || 50,
+                                y: parsedOld.positions?.[p.id]?.y || 50,
+                                size: parsedOld.settings?.badgeSize || 32,
+                                fSize: parsedOld.settings?.fontSize || 14
+                            });
+                        });
+
+                        const migratedAsm = {
+                            id: `asm_migrated`,
+                            name: "LRF발사버튼 조립체 (이전 데이터)",
+                            imageUrl: '1.png',
+                            parts: migratedParts
+                        };
+
+                        setAssemblies([migratedAsm]);
+                        setCurrentAsmId(migratedAsm.id);
+                    } else {
+                        const initialAsm = createDefaultAssembly("기본 조립체");
+                        setAssemblies([initialAsm]);
+                        setCurrentAsmId(initialAsm.id);
+                    }
+                } catch (e) {
+                    console.error("데이터 로드 실패, 초기화합니다.", e);
+                    const initialAsm = createDefaultAssembly();
+                    setAssemblies([initialAsm]);
+                    setCurrentAsmId(initialAsm.id);
+                } finally {
+                    setIsLoaded(true);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (isLoaded && assemblies.length > 0 && currentAsmId) {
+                    localStorage.setItem('lrfInventoryV2', JSON.stringify({ assemblies, currentAsmId }));
+                }
+            }, [assemblies, currentAsmId, isLoaded]);
+
+            if (!isLoaded) return <div className="p-10 text-center text-xl font-bold">로딩 중...</div>;
+
+            const currentAsm = assemblies.find(a => a.id === currentAsmId) || assemblies[0] || createDefaultAssembly();
+            const selectedPart = currentAsm.parts.find(p => p.id === selectedPartId) || null;
+
+            const handleAddAssembly = () => {
+                const newAsm = createDefaultAssembly(`새 조립체 ${assemblies.length + 1}`);
+                setAssemblies([...assemblies, newAsm]);
+                setCurrentAsmId(newAsm.id);
+            };
+
+            const handleRenameAssembly = () => {
+                const newName = prompt("조립체 이름을 입력하세요:", currentAsm.name);
+                if (newName && newName.trim() !== "") {
+                    setAssemblies(prev => prev.map(a => a.id === currentAsmId ? { ...a, name: newName } : a));
+                }
+            };
+
+            const handleDeleteAssembly = () => {
+                if (assemblies.length <= 1) {
+                    alert("최소 1개의 조립체는 존재해야 합니다.");
+                    return;
+                }
+                if (confirm(`'${currentAsm.name}' 조립체를 삭제하시겠습니까?`)) {
+                    const filtered = assemblies.filter(a => a.id !== currentAsmId);
+                    setAssemblies(filtered);
+                    setCurrentAsmId(filtered[0].id);
+                    setSelectedPartId(null);
+                }
+            };
+
+            const handleImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        setAssemblies(prev => prev.map(a => a.id === currentAsmId ? { ...a, imageUrl: event.target.result } : a));
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const handleAddPart = () => {
+                const newPart = createDefaultPart();
+                setAssemblies(prev => prev.map(a => 
+                    a.id === currentAsmId ? { ...a, parts: [...a.parts, newPart] } : a
+                ));
+                setSelectedPartId(newPart.id);
+            };
+
+            const handleDeletePart = (partId) => {
+                setAssemblies(prev => prev.map(a => 
+                    a.id === currentAsmId ? { ...a, parts: a.parts.filter(p => p.id !== partId) } : a
+                ));
+                if (selectedPartId === partId) setSelectedPartId(null);
+            };
+
+            const updatePart = (partId, field, value) => {
+                setAssemblies(prev => prev.map(a => 
+                    a.id === currentAsmId ? {
+                        ...a, 
+                        parts: a.parts.map(p => p.id === partId ? { ...p, [field]: value } : p)
+                    } : a
+                ));
+            };
+
+            // 터치/마우스 통합 최신 드래그 엔진 (Pointer Events)
+            const handlePointerDown = (e, part) => {
+                setSelectedPartId(part.id); // 터치 시 선택은 무조건 되도록
+                if (part.isLocked) return;  // 고정(잠금) 상태면 드래그 시작 안 함
+                
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId); // 화면 밖으로 손가락이 나가도 요소를 놓치지 않게 캡처
+                setDragState({ id: part.id, x: part.x, y: part.y });
+            };
+
+            const handlePointerMove = (e) => {
+                if (!dragState || !containerRef.current) return;
+                
+                const rect = containerRef.current.getBoundingClientRect();
+                let x = ((e.clientX - rect.left) / rect.width) * 100;
+                let y = ((e.clientY - rect.top) / rect.height) * 100;
+                
+                x = Math.max(0, Math.min(100, x));
+                y = Math.max(0, Math.min(100, y));
+
+                setDragState(prev => ({ ...prev, x, y }));
+            };
+
+            const handlePointerUp = (e) => {
+                if (dragState) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                    updatePart(dragState.id, 'x', dragState.x);
+                    updatePart(dragState.id, 'y', dragState.y);
+                    setDragState(null); // 이 순간 로컬 스토리지 자동 저장 발동
+                }
+            };
+
+            return (
+                <div 
+                    className="min-h-screen flex flex-col"
+                >
+                    <header className="bg-slate-900 text-white p-4 shadow-md z-20 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                            <i className="fa-solid fa-layer-group text-blue-400 text-xl"></i>
+                            <select 
+                                className="bg-slate-800 border border-slate-600 text-white rounded p-2 text-lg font-bold outline-none focus:border-blue-500 w-full sm:w-64"
+                                value={currentAsmId || ''}
+                                onChange={(e) => { setCurrentAsmId(e.target.value); setSelectedPartId(null); }}
+                            >
+                                {assemblies.map(a => (
+                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                            <button onClick={handleAddAssembly} className="flex-shrink-0 flex items-center gap-1 bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded text-sm font-medium transition">
+                                <i className="fa-solid fa-plus"></i> 새 조립체 추가
+                            </button>
+                            <button onClick={handleRenameAssembly} className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm font-medium transition">
+                                <i className="fa-solid fa-pen"></i> 이름 변경
+                            </button>
+                            <button onClick={handleDeleteAssembly} className="flex-shrink-0 flex items-center gap-1 bg-red-600 hover:bg-red-500 px-3 py-2 rounded text-sm font-medium transition">
+                                <i className="fa-solid fa-trash"></i> 삭제
+                            </button>
+                        </div>
+                    </header>
+
+                    <div className="flex-grow p-4 flex flex-col lg:flex-row gap-6 max-w-[1600px] mx-auto w-full">
+                        
+                        <div className={`${fullscreenPanel === 'left' ? 'fixed inset-0 z-[100] w-full h-full bg-white rounded-none' : (fullscreenPanel === 'right' ? 'hidden' : 'w-full lg:w-3/5 bg-white rounded-xl shadow border border-gray-200')} flex flex-col transition-all duration-200`}>
+                            <div className={`bg-slate-100 border-b p-3 flex justify-between items-center ${fullscreenPanel === 'left' ? 'rounded-none' : 'rounded-t-xl'}`}>
+                                <h2 className="text-gray-700 font-bold flex items-center gap-2">
+                                    <i className="fa-solid fa-image text-gray-500"></i>
+                                    파트리스트
+                                </h2>
+                                <div className="flex gap-2">
+                                    <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded text-sm transition shadow-sm">
+                                        이미지 업로드
+                                        <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                                    </label>
+                                    <button 
+                                        onClick={() => setFullscreenPanel(fullscreenPanel === 'left' ? null : 'left')}
+                                        className="bg-white border border-gray-300 hover:bg-blue-50 text-blue-600 px-3 py-1.5 rounded text-sm transition shadow-sm flex items-center gap-1 font-bold"
+                                    >
+                                        <i className={`fa-solid ${fullscreenPanel === 'left' ? 'fa-compress' : 'fa-expand'}`}></i>
+                                        {fullscreenPanel === 'left' ? '원래대로' : '전체화면'}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div 
+                                className="relative flex-grow bg-gray-50 flex items-center justify-center p-4 overflow-hidden min-h-[400px]"
+                                onClick={(e) => { if (e.target === e.currentTarget) setSelectedPartId(null); }}
+                            >
+                                <div className="relative inline-block" style={{ maxWidth: '100%' }} ref={containerRef}>
+                                    <img 
+                                        src={currentAsm.imageUrl} 
+                                        alt="도면" 
+                                        className="max-w-full h-auto object-contain border border-gray-300 shadow-sm bg-white no-drag"
+                                        style={{ maxHeight: fullscreenPanel === 'left' ? '90vh' : '75vh' }}
+                                        onError={(e) => {
+                                            e.target.onerror = null; 
+                                            e.target.src = "https://via.placeholder.com/800x600?text=이미지를+업로드해주세요";
+                                        }}
+                                    />
+                                    
+                                    {currentAsm.parts.map((part, index) => {
+                                        const isDragging = dragState?.id === part.id;
+                                        const posX = isDragging ? dragState.x : part.x;
+                                        const posY = isDragging ? dragState.y : part.y;
+                                        const isSelected = selectedPartId === part.id;
+                                        const stock = parseInt(part.stock) || 0;
+                                        const isLocked = part.isLocked || false;
+                                        
+                                        return (
+                                            <div 
+                                                key={part.id}
+                                                onPointerDown={(e) => handlePointerDown(e, part)}
+                                                onPointerMove={handlePointerMove}
+                                                onPointerUp={handlePointerUp}
+                                                onPointerCancel={handlePointerUp}
+                                                className={`absolute transform -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center font-bold shadow-md border-2 select-none px-[0.8em] gap-[0.4em] whitespace-nowrap touch-none
+                                                    ${stock > 0 ? 'bg-blue-600 border-white text-white' : 'bg-red-500 border-white text-white'}
+                                                    ${isSelected ? 'ring-4 ring-yellow-400 z-50 scale-110' : 'hover:scale-105 z-10'}
+                                                    ${isDragging ? 'opacity-90' : ''}
+                                                    ${isLocked ? 'cursor-default' : 'cursor-move'}
+                                                `}
+                                                style={{ 
+                                                    left: `${posX}%`, 
+                                                    top: `${posY}%`,
+                                                    height: `${part.size}px`,
+                                                    minWidth: `${part.size}px`,
+                                                    fontSize: `${part.fSize}px`,
+                                                    transition: isDragging ? 'none' : 'all 0.15s ease-in-out'
+                                                }}
+                                                title={`[순번 ${index + 1}] ${part.name || '이름 없음'}${isLocked ? ' (고정됨)' : ' - 드래그하여 이동'}`}
+                                            >
+                                                {/* 위치 고정 시 자물쇠 아이콘 표시 */}
+                                                {isLocked && (
+                                                    <div className="absolute -top-2 -right-2 bg-slate-800 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-lg border border-white z-20">
+                                                        <i className="fa-solid fa-lock"></i>
+                                                    </div>
+                                                )}
+                                                <span style={{ fontSize: '0.75em', minWidth: '1.6em', height: '1.6em' }} className="bg-white/30 rounded-full flex items-center justify-center font-medium px-1 text-inherit">
+                                                    {index + 1}
+                                                </span>
+                                                <span>{stock}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={`${fullscreenPanel === 'right' ? 'fixed inset-0 z-[100] w-full h-full bg-gray-100 p-4 overflow-y-auto' : (fullscreenPanel === 'left' ? 'hidden' : 'w-full lg:w-2/5')} flex flex-col gap-4 transition-all duration-200`}>
+                            
+                            <div className={`bg-white rounded-xl shadow border transition-all ${selectedPart ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200'}`}>
+                                <div className="bg-slate-100 p-3 rounded-t-xl border-b flex justify-between items-center">
+                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                        <i className="fa-solid fa-sliders text-blue-600"></i> 개별 크기 설정
+                                    </h3>
+                                    {selectedPart && (
+                                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-bold">
+                                            순번 {currentAsm.parts.findIndex(p => p.id === selectedPart.id) + 1} 선택됨
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="p-4 h-auto flex flex-col justify-center min-h-[120px]">
+                                    {selectedPart ? (
+                                        <div className="space-y-4">
+                                            {/* 위치 고정 토글 버튼 */}
+                                            <div className="flex items-center justify-between mb-2 bg-slate-50 p-2 rounded border border-slate-200">
+                                                <div>
+                                                    <span className="font-bold text-gray-700 block">위치 고정 (잠금)</span>
+                                                    <span className="text-[11px] text-gray-500">모바일 화면 확대 시 움직이지 않게 고정합니다.</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => updatePart(selectedPart.id, 'isLocked', !selectedPart.isLocked)}
+                                                    className={`px-3 py-1.5 rounded font-bold text-sm transition-colors flex items-center gap-2 border ${selectedPart.isLocked ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+                                                >
+                                                    {selectedPart.isLocked ? <><i className="fa-solid fa-lock text-red-400"></i> 고정됨</> : <><i className="fa-solid fa-unlock text-blue-500"></i> 이동가능</>}
+                                                </button>
+                                            </div>
+
+                                            <div className="flex items-center gap-4">
+                                                <label className="text-sm font-medium w-24 text-gray-700">배지 높이</label>
+                                                <input 
+                                                    type="range" min="20" max="100" 
+                                                    value={selectedPart.size} 
+                                                    onChange={(e) => updatePart(selectedPart.id, 'size', Number(e.target.value))}
+                                                    className="flex-grow accent-blue-600"
+                                                />
+                                                <span className="text-sm font-mono w-10 text-right">{selectedPart.size}px</span>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <label className="text-sm font-medium w-24 text-gray-700">글자 크기</label>
+                                                <input 
+                                                    type="range" min="10" max="50" 
+                                                    value={selectedPart.fSize} 
+                                                    onChange={(e) => updatePart(selectedPart.id, 'fSize', Number(e.target.value))}
+                                                    className="flex-grow accent-blue-600"
+                                                />
+                                                <span className="text-sm font-mono w-10 text-right">{selectedPart.fSize}px</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-gray-400 flex flex-col items-center gap-2">
+                                            <i className="fa-solid fa-arrow-pointer text-2xl"></i>
+                                            <p className="text-sm">왼쪽 파트리스트에서 <strong>수량 배지(원형)</strong>를 클릭하면<br/>해당 배지의 크기를 조절할 수 있습니다.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-xl shadow border border-gray-200 flex flex-col flex-grow overflow-hidden min-h-[400px]">
+                                <div className="bg-slate-800 text-white p-3 flex justify-between items-center">
+                                    <h2 className="text-lg font-bold flex items-center gap-2">
+                                        <i className="fa-solid fa-list-check"></i> 파트 리스트 (수기 입력)
+                                    </h2>
+                                    <button 
+                                        onClick={() => setFullscreenPanel(fullscreenPanel === 'right' ? null : 'right')}
+                                        className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-sm transition flex items-center gap-1 font-medium border border-slate-500"
+                                    >
+                                        <i className={`fa-solid ${fullscreenPanel === 'right' ? 'fa-compress' : 'fa-expand'}`}></i>
+                                        {fullscreenPanel === 'right' ? '원래대로' : '전체화면'}
+                                    </button>
+                                </div>
+                                
+                                <div className="overflow-y-auto flex-grow bg-white">
+                                    <table className="w-full text-left border-collapse min-w-[500px]">
+                                        <thead className="bg-slate-50 sticky top-0 shadow-sm z-10 border-b">
+                                            <tr>
+                                                <th className="p-2 w-12 text-center text-xs font-semibold text-gray-500">순번</th>
+                                                <th className="p-2 w-1/4 text-xs font-semibold text-gray-500">품번</th>
+                                                <th className="p-2 w-auto text-xs font-semibold text-gray-500">품명</th>
+                                                <th className="p-2 w-20 text-center text-xs font-semibold text-gray-500">재고</th>
+                                                <th className="p-2 w-12 text-center text-xs font-semibold text-gray-500">삭제</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {currentAsm.parts.map((part, index) => (
+                                                <tr 
+                                                    key={part.id} 
+                                                    className={`border-b transition-colors cursor-pointer
+                                                        ${selectedPartId === part.id ? 'bg-blue-50' : 'hover:bg-slate-50'}
+                                                    `}
+                                                    onClick={() => setSelectedPartId(part.id)}
+                                                >
+                                                    <td className="p-2 text-center">
+                                                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold
+                                                            ${selectedPartId === part.id ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}
+                                                        `}>
+                                                            {index + 1}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="품번 입력"
+                                                            value={part.no}
+                                                            onChange={(e) => updatePart(part.id, 'no', e.target.value)}
+                                                            className="editable-cell font-mono text-sm"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="품명 입력"
+                                                            value={part.name}
+                                                            onChange={(e) => updatePart(part.id, 'name', e.target.value)}
+                                                            className="editable-cell text-sm font-medium text-gray-800"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2 text-center">
+                                                        <input 
+                                                            type="number" 
+                                                            min="0"
+                                                            value={part.stock}
+                                                            onChange={(e) => updatePart(part.id, 'stock', e.target.value)}
+                                                            className="w-16 text-center border border-gray-300 rounded p-1 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                            onClick={(e) => e.stopPropagation()} 
+                                                        />
+                                                    </td>
+                                                    <td className="p-2 text-center">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDeletePart(part.id); }}
+                                                            className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition"
+                                                            title="부품 삭제"
+                                                        >
+                                                            <i className="fa-solid fa-xmark text-lg"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            <tr>
+                                                <td colSpan="5" className="p-2">
+                                                    <button 
+                                                        onClick={handleAddPart}
+                                                        className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition flex items-center justify-center gap-2"
+                                                    >
+                                                        <i className="fa-solid fa-circle-plus"></i> 부품 추가 (Row 추가)
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

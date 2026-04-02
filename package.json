@@ -1,0 +1,15 @@
+{
+  "name": "dcl100l-inventory",
+  "version": "1.0.0",
+  "description": "스마트 재고 및 파트리스트 관리 보드 - Node.js 로컬 서버",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "cors": "^2.8.5"
+  }
+}
