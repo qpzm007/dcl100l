@@ -337,6 +337,7 @@
             const [dragState, setDragState] = useState(null);
             const [isLoaded, setIsLoaded] = useState(false);
             const [fullscreenPanel, setFullscreenPanel] = useState(null);
+            const [isRightPanelOpen, setIsRightPanelOpen] = useState(false); // 리스트 패널 열림 상태
             // 줌 상태 (pct: 10~800 정수, 10% 단위)
             const [pct, setPct] = useState(100);  // 100 = 100%
             const zoom = pct / 100;
@@ -739,27 +740,30 @@
                         </div>
                     </header>
 
-                    <div className="flex-grow p-4 flex flex-col lg:flex-row gap-4 max-w-[1920px] mx-auto w-full">
+                    <div className="flex-grow p-2 sm:p-4 flex flex-col lg:flex-row gap-4 max-w-[1920px] mx-auto w-full overflow-hidden">
 
                         {/* 왼쪽: 파트리스트 이미지 패널 */}
-                        <div className={`${fullscreenPanel === 'left' ? 'fixed inset-0 z-[100] w-full h-full bg-white rounded-none' : (fullscreenPanel === 'right' ? 'hidden' : 'w-full lg:w-[70%] bg-white rounded-xl shadow border border-gray-200')} flex flex-col transition-all duration-200`}>
+                        <div className={`${fullscreenPanel === 'left' ? 'fixed inset-0 z-[100] w-full h-full bg-white rounded-none' : (fullscreenPanel === 'right' ? 'hidden' : (isRightPanelOpen ? 'w-full lg:w-[65%]' : 'w-full'))} flex flex-col transition-all duration-300 ease-in-out bg-white rounded-xl shadow border border-gray-200 overflow-hidden`}>
                             <div className={`bg-slate-100 border-b p-3 flex justify-between items-center ${fullscreenPanel === 'left' ? 'rounded-none' : 'rounded-t-xl'}`}>
                                 <h2 className="text-gray-700 font-bold flex items-center gap-2">
                                     <i className="fa-solid fa-image text-gray-500"></i>
                                     파트리스트
                                 </h2>
                                 <div className="flex gap-2">
-                                    {isAdmin && (
-                                        <label title="이미지는 images 폴더에 명번대로 직접 넣어주세요" className="bg-slate-200 text-slate-500 px-3 py-1.5 rounded text-sm opacity-50 cursor-not-allowed hidden sm:block">
-                                            이미지 직접 업로드 불가
-                                        </label>
-                                    )}
+                                    <button
+                                        onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
+                                        className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isRightPanelOpen ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}
+                                        title={isRightPanelOpen ? '리스트 닫기' : '파트리스트(입력) 열기'}
+                                    >
+                                        <i className={`fa-solid ${isRightPanelOpen ? 'fa-square-check' : 'fa-list-ul'}`}></i>
+                                        {isRightPanelOpen ? '리스트 닫기' : '리스트 펼치기'}
+                                    </button>
                                     <button
                                         onClick={() => setFullscreenPanel(fullscreenPanel === 'left' ? null : 'left')}
-                                        className="bg-white border border-gray-300 hover:bg-blue-50 text-blue-600 px-3 py-1.5 rounded text-sm transition shadow-sm flex items-center gap-1 font-bold"
+                                        className="bg-white border border-gray-300 hover:bg-gray-100 text-gray-600 px-3 py-1.5 rounded text-sm transition shadow-sm flex items-center gap-1 font-bold"
                                     >
                                         <i className={`fa-solid ${fullscreenPanel === 'left' ? 'fa-compress' : 'fa-expand'}`}></i>
-                                        {fullscreenPanel === 'left' ? '원래대로' : '전체화면'}
+                                        {fullscreenPanel === 'left' ? '축소' : '전체'}
                                     </button>
                                 </div>
                             </div>
@@ -924,7 +928,7 @@
                         </div>
 
                         {/* 오른쪽: 파트 리스트 패널 */}
-                        <div className={`${fullscreenPanel === 'right' ? 'fixed inset-0 z-[100] w-full h-full bg-gray-100 p-4 overflow-y-auto' : (fullscreenPanel === 'left' ? 'hidden' : 'w-full lg:w-[30%]')} flex flex-col gap-4 transition-all duration-200`}>
+                        <div className={`${fullscreenPanel === 'right' ? 'fixed inset-0 z-[100] w-full h-full bg-gray-100 p-4 overflow-y-auto' : (fullscreenPanel === 'left' || !isRightPanelOpen ? 'hidden' : 'w-full lg:w-[35%]')} flex flex-col gap-4 transition-all duration-300 ease-in-out`}>
 
                             {/* 개별 배지 설정 */}
                             <div className={`bg-white rounded-xl shadow border transition-all ${selectedPart ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200'}`}>
