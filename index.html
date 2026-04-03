@@ -226,6 +226,7 @@
             id: `asm_${Date.now()}`,
             name,
             imageUrl: `images/${index}.png`,
+            zoom: 100, panX: 0, panY: 0, zoomLocked: false,
             parts: [createDefaultPart()]
         });
 
@@ -528,21 +529,27 @@
 
             // 절대 퍼센트로 줌 변경 (pan 보정 포함)
             const applyPct = (nextP, originX, originY) => {
-                if (zoomLocked) return;
+                if (zoomLocked || !isAdmin) return;
                 setPct(prev => {
                     const clamped = clampPct(nextP);
                     const ratio = clamped / prev;
-                    setPan(p => ({
-                        x: originX - (originX - p.x) * ratio,
-                        y: originY - (originY - p.y) * ratio,
-                    }));
+                    const newPan = {
+                        x: originX - (originX - pan.x) * ratio,
+                        y: originY - (originY - pan.y) * ratio,
+                    };
+                    setPan(newPan);
+                    
+                    // 조립체 데이터에 반영
+                    setAssemblies(prevAsms => prevAsms.map(a => 
+                        a.id === currentAsmId ? { ...a, zoom: clamped, panX: newPan.x, panY: newPan.y } : a
+                    ));
                     return clamped;
                 });
             };
 
             // 휠 줌 (10% 단위)
             const handleWheel = (e) => {
-                if (zoomLocked) return;
+                if (zoomLocked || !isAdmin) return;
                 e.preventDefault();
                 const rect = viewportRef.current.getBoundingClientRect();
                 const ox = e.clientX - rect.left;
@@ -554,7 +561,7 @@
             const handleVpMouseDown = (e) => {
                 if (e.button !== 0) return;
                 if (e.target.closest('[data-badge]')) return;
-                if (!zoomLocked) {
+                if (!zoomLocked && isAdmin) {
                     setIsPanning(true);
                     panStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
                     e.preventDefault();
@@ -566,7 +573,18 @@
                 const dy = e.clientY - panStart.current.my;
                 setPan({ x: panStart.current.px + dx, y: panStart.current.py + dy });
             };
-            const handleVpMouseUp = () => { setIsPanning(false); panStart.current = null; };
+            const handleVpMouseUp = () => { 
+                if (isPanning) {
+                    setIsPanning(false); 
+                    panStart.current = null;
+                    // 최종 패닝 위치 저장
+                    if (isAdmin) {
+                        setAssemblies(prev => prev.map(a => 
+                            a.id === currentAsmId ? { ...a, panX: pan.x, panY: pan.y } : a
+                        ));
+                    }
+                }
+            };
 
             // 핀치 줌 (터치, 10% 단위로 스냅)
             const handleTouchStart = (e) => {
@@ -785,31 +803,34 @@
                                 </div>
 
                                 {/* 줌 컨트롤 바 */}
-                                <div className="zoom-controls">
-                                    <button className="zoom-btn" onClick={zoomOut} title="10% 축소" disabled={zoomLocked || pct <= 10}>
-                                        <i className="fa-solid fa-minus"></i>
-                                    </button>
-                                    <button
-                                        onClick={zoomReset}
-                                        style={{fontSize:11, width:'auto', borderRadius:8, padding:'0 10px', minWidth:52, fontWeight:700, letterSpacing:'-0.5px'}}
-                                        className="zoom-btn"
-                                        title="클릭하여 100% 초기화"
-                                    >
-                                        {pct}%
-                                    </button>
-                                    <button className="zoom-btn" onClick={zoomIn} title="10% 확대" disabled={zoomLocked || pct >= 800}>
-                                        <i className="fa-solid fa-plus"></i>
-                                    </button>
-                                    <div style={{width:1, height:16, background:'rgba(255,255,255,0.2)', margin:'0 2px'}}></div>
-                                    <button
-                                        className={`zoom-lock-btn ${zoomLocked ? 'locked' : ''}`}
-                                        onClick={() => setZoomLocked(l => !l)}
-                                        title={zoomLocked ? '줌 잠금 해제' : '현재 줌 고정'}
-                                    >
-                                        <i className={`fa-solid ${zoomLocked ? 'fa-lock' : 'fa-lock-open'}`}></i>
-                                        {' '}{zoomLocked ? `${pct}% 고정` : '고정'}
-                                    </button>
-                                </div>
+                                {isAdmin && (
+                                    <div className="zoom-controls">
+                                        <button className="zoom-btn" onClick={zoomOut} title="10% 축소" disabled={zoomLocked || pct <= 10}>
+                                            <i className="fa-solid fa-minus"></i>
+                                        </button>
+                                        <div style={{width:1, height:16, background:'rgba(255,255,255,0.2)', margin:'0 2px'}}></div>
+                                        <button
+                                            onClick={zoomReset}
+                                            style={{fontSize:11, width:'auto', borderRadius:8, padding:'0 10px', minWidth:52, fontWeight:700, letterSpacing:'-0.5px'}}
+                                            className="zoom-btn"
+                                            title="클릭하여 100% 초기화"
+                                        >
+                                            {pct}%
+                                        </button>
+                                        <button className="zoom-btn" onClick={zoomIn} title="10% 확대" disabled={zoomLocked || pct >= 800}>
+                                            <i className="fa-solid fa-plus"></i>
+                                        </button>
+                                        <div style={{width:1, height:16, background:'rgba(255,255,255,0.2)', margin:'0 2px'}}></div>
+                                        <button
+                                            className={`zoom-lock-btn ${zoomLocked ? 'locked' : ''}`}
+                                            onClick={handleToggleZoomLock}
+                                            title={zoomLocked ? '줌 잠금 해제' : '현재 줌 고정'}
+                                        >
+                                            <i className={`fa-solid ${zoomLocked ? 'fa-lock' : 'fa-lock-open'}`}></i>
+                                            {' '}{zoomLocked ? `${pct}% 고정` : '고정'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
