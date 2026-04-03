@@ -15,11 +15,12 @@
     <!-- Firebase SDK End -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { background-color: #f3f4f6; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        body { 
+            background-color: #f3f4f6;
+            -webkit-text-size-adjust: none;
+            -moz-text-size-adjust: none;
+            text-size-adjust: none;
+        }
         .no-drag { -webkit-user-drag: none; user-select: none; }
         .editable-cell {
             width: 100%;
@@ -410,21 +411,26 @@
                 }
             }, [assemblies, currentAsmId, isLoaded]);
 
-            // 조립체 전환 시 해당 조립체의 저장된 줌/팬 적용
+            // 조립체 전환 또는 화면 크기 변경 시 해당 조립체의 저장된 줌/팬 적용
             useEffect(() => {
-                const currentAsm = assemblies.find(a => a.id === currentAsmId);
-                if (currentAsm && isLoaded) {
-                    // 저장된 값이 없으면 화면에 맞게 초기 줌 계산
-                    if (currentAsm.zoom) {
-                        setPct(currentAsm.zoom);
-                    } else {
-                        const vWidth = viewportRef.current?.clientWidth || window.innerWidth;
-                        const initialPct = Math.round((vWidth / 2000) * 100);
-                        setPct(initialPct);
+                const updateZoom = () => {
+                    const currentAsm = assemblies.find(a => a.id === currentAsmId);
+                    if (currentAsm && isLoaded) {
+                        if (currentAsm.zoom) {
+                            setPct(currentAsm.zoom);
+                        } else {
+                            const vWidth = viewportRef.current?.clientWidth || window.innerWidth;
+                            const initialPct = Math.round((vWidth / 2000) * 100);
+                            setPct(initialPct);
+                        }
+                        setPan({ x: currentAsm.panX || 0, y: currentAsm.panY || 0 });
+                        setZoomLocked(currentAsm.zoomLocked || false);
                     }
-                    setPan({ x: currentAsm.panX || 0, y: currentAsm.panY || 0 });
-                    setZoomLocked(currentAsm.zoomLocked || false);
-                }
+                };
+
+                updateZoom();
+                window.addEventListener('resize', updateZoom);
+                return () => window.removeEventListener('resize', updateZoom);
             }, [currentAsmId, isLoaded]);
 
             if (!userRole) return <Login onLogin={handleLogin} />;
@@ -779,12 +785,12 @@
                                     className="zoom-inner"
                                     style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: '2000px' }}
                                 >
-                                    <div className="relative inline-block w-full" ref={containerRef}>
+                                    <div className="relative block w-full" ref={containerRef} style={{ lineHeight: 0 }}>
                                         <img
                                             src={currentAsm.imageUrl}
                                             alt="도면"
-                                            className="w-full h-auto object-contain border border-gray-300 shadow-sm bg-white no-drag"
-                                            style={{ display: 'block' }}
+                                            className="w-full h-auto border border-gray-300 shadow-sm bg-white no-drag"
+                                            style={{ display: 'block', margin: 0, padding: 0 }}
                                             onError={(e) => {
                                                 e.target.onerror = null;
                                                 e.target.src = "https://placehold.co/800x600/e2e8f0/94a3b8?text=이미지를+업로드해주세요";
