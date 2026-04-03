@@ -235,9 +235,10 @@
         });
 
         // index: 1-based 조립체 순번 (1번 → 1.png, 2번 → 2.png)
-        const createDefaultAssembly = (name = "새 조립체", index = 1) => ({
+        const createDefaultAssembly = (name = "새 조립체", index = 1, parentId = null) => ({
             id: `asm_${Date.now()}`,
             name,
+            parentId, // 부모 ID (null이면 최상위)
             imageUrl: `images/${index}.png`,
             zoom: 100, panX: 0, panY: 0, zoomLocked: false,
             parts: [createDefaultPart()]
@@ -338,6 +339,7 @@
             const [isLoaded, setIsLoaded] = useState(false);
             const [fullscreenPanel, setFullscreenPanel] = useState(null);
             const [isRightPanelOpen, setIsRightPanelOpen] = useState(false); // 리스트 패널 열림 상태
+            const [expandedAsmIds, setExpandedAsmIds] = useState(new Set()); // 펼쳐진 조립체 ID들
             // 줌 상태 (pct: 10~800 정수, 10% 단위)
             const [pct, setPct] = useState(100);  // 100 = 100%
             const zoom = pct / 100;
@@ -434,6 +436,132 @@
                 window.addEventListener('resize', updateZoom);
                 return () => window.removeEventListener('resize', updateZoom);
             }, [currentAsmId, isLoaded]);
+
+            // 계층형 관리 함수들
+            const toggleAsmExpand = (id) => {
+                setExpandedAsmIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id);
+                    else next.add(id);
+                    return next;
+                });
+            };
+
+            const expandAllAsms = () => {
+                setExpandedAsmIds(new Set(assemblies.map(a => a.id)));
+            };
+
+            const collapseAllAsms = () => {
+                setExpandedAsmIds(new Set());
+            };
+
+            const handleSubAsmAdd = async (parentId) => {
+                if (!isAdmin) return;
+                const parent = assemblies.find(a => a.id === parentId);
+                const newName = prompt('하위 조립체 이름을 입력하세요:', (parent?.name || '') + ' 하위');
+                if (!newName) return;
+
+                const newAsm = createDefaultAssembly(newName, 1, parentId);
+                const updated = [...assemblies, newAsm];
+                setAssemblies(updated);
+                setCurrentAsmId(newAsm.id);
+                setExpandedAsmIds(prev => new Set(prev).add(parentId));
+                
+                if (isAdmin) {
+                    await API.saveAssembly(newAsm);
+                    await API.setCurrent(newAsm.id);
+                }
+            };
+
+            const handleDeleteAsmComplete = async (id) => {
+                if (!isAdmin) return;
+                if (!confirm('이 조립체와 모든 하위 조립체/항목이 삭제됩니다. 계속하시겠습니까?')) return;
+                
+                // 재귀적 삭제 대상 찾기
+                const getChildrenIds = (pid) => {
+                    const children = assemblies.filter(a => a.parentId === pid);
+                    return children.reduce((acc, child) => [...acc, child.id, ...getChildrenIds(child.id)], []);
+                };
+                
+                const deleteIds = [id, ...getChildrenIds(id)];
+                const filtered = assemblies.filter(a => !deleteIds.includes(a.id));
+                const nextId = filtered[0]?.id || null;
+                
+                setAssemblies(filtered);
+                setCurrentAsmId(nextId);
+                
+                // 실제 서버 DB 삭제 로직은 API가 일괄 삭제를 지원해야 함 (현재는 Loop)
+                for (const dId of deleteIds) {
+                    await API.deleteAssembly(dId);
+                }
+            };
+
+            // 재귀적 트리 렌더러
+            const renderAssemblyTree = (parentId = null, level = 0) => {
+                const children = assemblies.filter(a => (a.parentId || null) === (parentId || null));
+                if (children.length === 0 && level > 0) return null;
+
+                return (
+                    <div className={level > 0 ? "ml-4 border-l border-gray-200" : ""}>
+                        {children.map(asm => {
+                            const hasChildren = assemblies.some(a => a.parentId === asm.id);
+                            const isExpanded = expandedAsmIds.has(asm.id);
+                            const isSelected = currentAsmId === asm.id;
+
+                            return (
+                                <div key={asm.id} className="flex flex-col">
+                                    <div 
+                                        className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 border-blue-200 border' : 'hover:bg-gray-50'}`}
+                                        onClick={() => setCurrentAsmId(asm.id)}
+                                    >
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                            <div 
+                                                className="w-5 h-5 flex items-center justify-center hover:bg-gray-200 rounded cursor-pointer"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleAsmExpand(asm.id);
+                                                }}
+                                            >
+                                                {hasChildren ? (
+                                                    <i className={`fa-solid ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'} text-[10px] text-gray-500`}></i>
+                                                ) : (
+                                                    <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
+                                                )}
+                                            </div>
+                                            <i className={`fa-solid ${hasChildren ? (isExpanded ? 'fa-folder-open' : 'fa-folder') : 'fa-file-image'} ${isSelected ? 'text-blue-500' : 'text-gray-400'} text-sm`}></i>
+                                            <span className={`text-sm truncate ${isSelected ? 'font-bold text-blue-700' : 'text-gray-700'}`}>
+                                                {asm.name}
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {isAdmin && (
+                                                <>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleSubAsmAdd(asm.id); }}
+                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white border border-gray-200 hover:text-green-600 hover:border-green-200 shadow-sm"
+                                                        title="하위 조립체 추가"
+                                                    >
+                                                        <i className="fa-solid fa-plus text-[10px]"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteAsmComplete(asm.id); }}
+                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white border border-gray-200 hover:text-red-600 hover:border-red-200 shadow-sm"
+                                                        title="삭제"
+                                                    >
+                                                        <i className="fa-solid fa-trash-can text-[10px]"></i>
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {isExpanded && renderAssemblyTree(asm.id, level + 1)}
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            };
 
             if (!userRole) return <Login onLogin={handleLogin} />;
 
@@ -744,14 +872,43 @@
 
                         {/* 왼쪽: 파트리스트 이미지 패널 */}
                         <div className={`${fullscreenPanel === 'left' ? 'fixed inset-0 z-[100] w-full h-full bg-white rounded-none' : (fullscreenPanel === 'right' ? 'hidden' : (isRightPanelOpen ? 'w-full lg:w-[65%]' : 'w-full'))} flex flex-col transition-all duration-300 ease-in-out bg-white rounded-xl shadow border border-gray-200 overflow-hidden`}>
-                            <div className={`bg-slate-100 border-b p-3 flex justify-between items-center ${fullscreenPanel === 'left' ? 'rounded-none' : 'rounded-t-xl'}`}>
-                                <h2 className="text-gray-700 font-bold flex items-center gap-2 overflow-hidden truncate">
-                                    <i className="fa-solid fa-image text-gray-500 flex-shrink-0"></i>
-                                    <span className="truncate">{currentAsm?.name || '파트리스트'}</span>
-                                    <span className="text-xs font-normal text-gray-400 flex-shrink-0">
-                                        ({currentAsm?.imageUrl?.split('/').pop() || '이미지 없음'})
-                                    </span>
-                                </h2>
+                            <div className={`bg-slate-100 border-b p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 ${fullscreenPanel === 'left' ? 'rounded-none' : 'rounded-t-xl'}`}>
+                                <div className="flex flex-col gap-1 overflow-hidden">
+                                    <h2 className="text-gray-700 font-bold flex items-center gap-2 overflow-hidden truncate">
+                                        <i className="fa-solid fa-image text-gray-500 flex-shrink-0"></i>
+                                        <span className="truncate">{currentAsm?.name || '파트리스트'}</span>
+                                        <span className="text-xs font-normal text-gray-400 flex-shrink-0">
+                                            ({currentAsm?.imageUrl?.split('/').pop() || '이미지 없음'})
+                                        </span>
+                                    </h2>
+                                    {/* 브레드크럼 (Breadcrumb) */}
+                                    <div className="flex items-center gap-1 text-[10px] text-gray-400 overflow-hidden truncate">
+                                        {(() => {
+                                            const path = [];
+                                            let temp = currentAsm;
+                                            while(temp && temp.parentId) {
+                                                const parent = assemblies.find(a => a.id === temp.parentId);
+                                                if (parent) {
+                                                    path.unshift(parent);
+                                                    temp = parent;
+                                                } else break;
+                                            }
+                                            return (
+                                                <>
+                                                    <span className="hover:text-blue-500 cursor-pointer" onClick={() => setCurrentAsmId(assemblies.find(a => !a.parentId)?.id)}>Root</span>
+                                                    {path.map(p => (
+                                                        <React.Fragment key={p.id}>
+                                                            <i className="fa-solid fa-chevron-right text-[8px]"></i>
+                                                            <span className="hover:text-blue-500 cursor-pointer" onClick={() => setCurrentAsmId(p.id)}>{p.name}</span>
+                                                        </React.Fragment>
+                                                    ))}
+                                                    <i className="fa-solid fa-chevron-right text-[8px]"></i>
+                                                    <span className="font-bold text-gray-600">{currentAsm?.name}</span>
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
@@ -931,7 +1088,48 @@
                         </div>
 
                         {/* 오른쪽: 파트 리스트 패널 */}
-                        <div className={`${fullscreenPanel === 'right' ? 'fixed inset-0 z-[100] w-full h-full bg-gray-100 p-4 overflow-y-auto' : (fullscreenPanel === 'left' || !isRightPanelOpen ? 'hidden' : 'w-full lg:w-[35%]')} flex flex-col gap-4 transition-all duration-300 ease-in-out`}>
+                        <div className={`${fullscreenPanel === 'right' ? 'fixed inset-0 z-[100] w-full h-full bg-gray-100 p-4 overflow-y-auto' : (fullscreenPanel === 'left' || !isRightPanelOpen ? 'hidden' : 'w-full lg:w-[35%]')} flex flex-col gap-4 transition-all duration-300 ease-in-out pb-20`}>
+
+                            {/* 조립체 계층 구조 탐색기 (Explorer) */}
+                            <div className="bg-white rounded-xl shadow border border-gray-200 flex flex-col overflow-hidden max-h-[400px]">
+                                <div className="bg-slate-800 p-3 flex justify-between items-center">
+                                    <h3 className="font-bold text-white flex items-center gap-2 text-sm">
+                                        <i className="fa-solid fa-sitemap text-blue-400"></i> 조립체 계층 탐색기
+                                    </h3>
+                                    <div className="flex gap-1">
+                                        <button 
+                                            onClick={collapseAllAsms}
+                                            className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] rounded font-bold transition-colors"
+                                            title="1단계만 보기"
+                                        >
+                                            1단계
+                                        </button>
+                                        <button 
+                                            onClick={expandAllAsms}
+                                            className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] rounded font-bold transition-colors"
+                                            title="전체 펼치기"
+                                        >
+                                            전체 펼침
+                                        </button>
+                                        {isAdmin && (
+                                            <button 
+                                                onClick={() => handleSubAsmAdd(null)}
+                                                className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded font-bold transition-colors"
+                                                title="최상위 조립체 추가"
+                                            >
+                                                <i className="fa-solid fa-plus"></i>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="p-2 overflow-y-auto custom-scrollbar flex-grow bg-gray-50 min-h-[100px]">
+                                    {renderAssemblyTree(null, 0)}
+                                </div>
+                                <div className="bg-white p-2 border-t text-[10px] text-gray-400 flex justify-between italic">
+                                    <span>* 항목 클릭 시 해당 도면으로 이동</span>
+                                    <span>총 {assemblies.length}개 노드</span>
+                                </div>
+                            </div>
 
                             {/* 개별 배지 설정 */}
                             <div className={`bg-white rounded-xl shadow border transition-all ${selectedPart ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200'}`}>
