@@ -338,7 +338,7 @@
             const [dragState, setDragState] = useState(null);
             const [isLoaded, setIsLoaded] = useState(false);
             const [fullscreenPanel, setFullscreenPanel] = useState(null);
-            const [isRightPanelOpen, setIsRightPanelOpen] = useState(false); // 리스트 패널 열림 상태
+            const [isRightPanelOpen, setIsRightPanelOpen] = useState(true); // 사이드바(좌/우) 열림 상태 (기본 펼침)
             const [expandedAsmIds, setExpandedAsmIds] = useState(new Set()); // 펼쳐진 조립체 ID들
             // 줌 상태 (pct: 10~800 정수, 10% 단위)
             const [pct, setPct] = useState(100);  // 100 = 100%
@@ -870,8 +870,30 @@
 
                     <div className="flex-grow p-2 sm:p-4 flex flex-col lg:flex-row gap-4 max-w-[1920px] mx-auto w-full overflow-hidden">
 
-                        {/* 왼쪽: 파트리스트 이미지 패널 */}
-                        <div className={`${fullscreenPanel === 'left' ? 'fixed inset-0 z-[100] w-full h-full bg-white rounded-none' : (fullscreenPanel === 'right' ? 'hidden' : (isRightPanelOpen ? 'w-full lg:w-[65%]' : 'w-full'))} flex flex-col transition-all duration-300 ease-in-out bg-white rounded-xl shadow border border-gray-200 overflow-hidden`}>
+                        {/* 좌측: 조립체 계층 구조 탐색기 (1.5 / 15%) */}
+                        <div className={`${(fullscreenPanel || !isRightPanelOpen) ? 'hidden' : 'w-full lg:w-[15%]'} flex flex-col gap-4 transition-all duration-300 ease-in-out pb-10`}>
+                            <div className="bg-white rounded-xl shadow border border-gray-200 flex flex-col overflow-hidden h-full max-h-[800px]">
+                                <div className="bg-slate-800 p-3 flex justify-between items-center">
+                                    <h3 className="font-bold text-white flex items-center gap-2 text-xs">
+                                        <i className="fa-solid fa-sitemap text-blue-400"></i> 조립체 계층
+                                    </h3>
+                                    <div className="flex gap-1">
+                                        <button onClick={collapseAllAsms} className="px-1.5 py-0.5 bg-slate-700 hover:bg-slate-600 text-white text-[9px] rounded font-bold transition-colors">1단계</button>
+                                        <button onClick={expandAllAsms} className="px-1.5 py-0.5 bg-slate-700 hover:bg-slate-600 text-white text-[9px] rounded font-bold transition-colors">전체</button>
+                                    </div>
+                                </div>
+                                <div className="p-2 overflow-y-auto custom-scrollbar flex-grow bg-gray-50 min-h-[150px]">
+                                    {renderAssemblyTree(null, 0)}
+                                </div>
+                                <div className="bg-white p-2 border-t text-[9px] text-gray-400 flex justify-between italic">
+                                    <span>총 {assemblies.length}개</span>
+                                    {isAdmin && <button onClick={() => handleSubAsmAdd(null)} className="text-blue-600 font-bold hover:underline">추가 +</button>}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 중앙: 파트리스트 이미지 패널 (6.0 / 60%) */}
+                        <div className={`${fullscreenPanel === 'left' ? 'fixed inset-0 z-[100] w-full h-full bg-white rounded-none' : (fullscreenPanel === 'right' ? 'hidden' : (isRightPanelOpen ? 'w-full lg:w-[60%]' : 'w-full'))} flex flex-col transition-all duration-300 ease-in-out bg-white rounded-xl shadow border border-gray-200 overflow-hidden`}>
                             <div className={`bg-slate-100 border-b p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 ${fullscreenPanel === 'left' ? 'rounded-none' : 'rounded-t-xl'}`}>
                                 <div className="flex flex-col gap-1 overflow-hidden">
                                     <h2 className="text-gray-700 font-bold flex items-center gap-2 overflow-hidden truncate">
@@ -913,10 +935,10 @@
                                     <button
                                         onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
                                         className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isRightPanelOpen ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}
-                                        title={isRightPanelOpen ? '리스트 닫기' : '파트리스트(입력) 열기'}
+                                        title={isRightPanelOpen ? '탐색기/리스트 닫기' : '탐색기/리스트 열기'}
                                     >
                                         <i className={`fa-solid ${isRightPanelOpen ? 'fa-square-check' : 'fa-list-ul'}`}></i>
-                                        {isRightPanelOpen ? '리스트 닫기' : '리스트 펼치기'}
+                                        {isRightPanelOpen ? '탐색기 닫기' : '탐색기 펼치기'}
                                     </button>
                                     <button
                                         onClick={() => setFullscreenPanel(fullscreenPanel === 'left' ? null : 'left')}
@@ -1087,58 +1109,17 @@
                             </div>
                         </div>
 
-                        {/* 오른쪽: 파트 리스트 패널 */}
-                        <div className={`${fullscreenPanel === 'right' ? 'fixed inset-0 z-[100] w-full h-full bg-gray-100 p-4 overflow-y-auto' : (fullscreenPanel === 'left' || !isRightPanelOpen ? 'hidden' : 'w-full lg:w-[35%]')} flex flex-col gap-4 transition-all duration-300 ease-in-out pb-20`}>
-
-                            {/* 조립체 계층 구조 탐색기 (Explorer) */}
-                            <div className="bg-white rounded-xl shadow border border-gray-200 flex flex-col overflow-hidden max-h-[400px]">
-                                <div className="bg-slate-800 p-3 flex justify-between items-center">
-                                    <h3 className="font-bold text-white flex items-center gap-2 text-sm">
-                                        <i className="fa-solid fa-sitemap text-blue-400"></i> 조립체 계층 탐색기
-                                    </h3>
-                                    <div className="flex gap-1">
-                                        <button 
-                                            onClick={collapseAllAsms}
-                                            className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] rounded font-bold transition-colors"
-                                            title="1단계만 보기"
-                                        >
-                                            1단계
-                                        </button>
-                                        <button 
-                                            onClick={expandAllAsms}
-                                            className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] rounded font-bold transition-colors"
-                                            title="전체 펼치기"
-                                        >
-                                            전체 펼침
-                                        </button>
-                                        {isAdmin && (
-                                            <button 
-                                                onClick={() => handleSubAsmAdd(null)}
-                                                className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded font-bold transition-colors"
-                                                title="최상위 조립체 추가"
-                                            >
-                                                <i className="fa-solid fa-plus"></i>
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="p-2 overflow-y-auto custom-scrollbar flex-grow bg-gray-50 min-h-[100px]">
-                                    {renderAssemblyTree(null, 0)}
-                                </div>
-                                <div className="bg-white p-2 border-t text-[10px] text-gray-400 flex justify-between italic">
-                                    <span>* 항목 클릭 시 해당 도면으로 이동</span>
-                                    <span>총 {assemblies.length}개 노드</span>
-                                </div>
-                            </div>
+                        {/* 우측: 파트 리스트 패널 (2.5 / 25%) */}
+                        <div className={`${fullscreenPanel === 'right' ? 'fixed inset-0 z-[100] w-full h-full bg-gray-100 p-4 overflow-y-auto' : (fullscreenPanel === 'left' || !isRightPanelOpen ? 'hidden' : 'w-full lg:w-[25%]')} flex flex-col gap-4 transition-all duration-300 ease-in-out pb-10`}>
 
                             {/* 개별 배지 설정 */}
                             <div className={`bg-white rounded-xl shadow border transition-all ${selectedPart ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200'}`}>
                                 <div className="bg-slate-100 p-3 rounded-t-xl border-b flex justify-between items-center">
-                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                    <h3 className="font-bold text-gray-800 flex items-center gap-2 text-xs">
                                         <i className="fa-solid fa-sliders text-blue-600"></i> 개별 크기 설정
                                     </h3>
                                     {selectedPart && (
-                                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-bold">
+                                        <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-1 rounded-full font-bold">
                                             순번 {currentAsm.parts.findIndex(p => p.id === selectedPart.id) + 1} 선택됨
                                         </span>
                                     )}
