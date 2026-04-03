@@ -59,6 +59,17 @@
             transform-origin: 0 0;
             position: absolute;
             top: 0; left: 0;
+            width: 2000px; /* 고정 가상 너비 */
+        }
+        @media (max-width: 768px) {
+            .zoom-controls {
+                bottom: 20px;
+                padding: 4px 8px;
+            }
+            .zoom-btn {
+                width: 32px;
+                height: 32px;
+            }
         }
         .zoom-controls {
             position: absolute;
@@ -399,7 +410,14 @@
             useEffect(() => {
                 const currentAsm = assemblies.find(a => a.id === currentAsmId);
                 if (currentAsm && isLoaded) {
-                    setPct(currentAsm.zoom || 100);
+                    // 저장된 값이 없으면 화면에 맞게 초기 줌 계산
+                    if (currentAsm.zoom) {
+                        setPct(currentAsm.zoom);
+                    } else {
+                        const vWidth = viewportRef.current?.clientWidth || window.innerWidth;
+                        const initialPct = Math.round((vWidth / 2000) * 100);
+                        setPct(initialPct);
+                    }
                     setPan({ x: currentAsm.panX || 0, y: currentAsm.panY || 0 });
                     setZoomLocked(currentAsm.zoomLocked || false);
                 }
@@ -709,20 +727,19 @@
                                 >
                                 <div
                                     className="zoom-inner"
-                                    style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+                                    style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: '2000px' }}
                                 >
-                                <div className="p-4">
-                                <div className="relative inline-block" style={{ maxWidth: '100%' }} ref={containerRef}>
-                                    <img
-                                        src={currentAsm.imageUrl}
-                                        alt="도면"
-                                        className="max-w-full h-auto object-contain border border-gray-300 shadow-sm bg-white no-drag"
-                                        style={{ maxHeight: fullscreenPanel === 'left' ? '85vh' : '72vh', display: 'block' }}
-                                        onError={(e) => {
-                                            e.target.onerror = null;
-                                            e.target.src = "https://placehold.co/800x600/e2e8f0/94a3b8?text=이미지를+업로드해주세요";
-                                        }}
-                                    />
+                                    <div className="relative inline-block w-full" ref={containerRef}>
+                                        <img
+                                            src={currentAsm.imageUrl}
+                                            alt="도면"
+                                            className="w-full h-auto object-contain border border-gray-300 shadow-sm bg-white no-drag"
+                                            style={{ display: 'block' }}
+                                            onError={(e) => {
+                                                e.target.onerror = null;
+                                                e.target.src = "https://placehold.co/800x600/e2e8f0/94a3b8?text=이미지를+업로드해주세요";
+                                            }}
+                                        />
                                     {currentAsm.parts.map((part, index) => {
                                         const isDragging = dragState?.id === part.id;
                                         const posX = isDragging ? dragState.x : part.x;
@@ -803,11 +820,10 @@
                                             </div>
                                         );
                                     })}
+                                    </div>
                                 </div>
                                 </div>
-                                </div>
-                                </div>
-                                {/* 줌 컨트롤 바 - 관리자만 보임 */}
+                                {/* 줌 컨트롤 바 - 관리자만 보임 - viewport의 형제로 위치 */}
                                 {isAdmin && (
                                     <div className="zoom-controls">
                                         <button className="zoom-btn" onClick={zoomOut} title="10% 축소" disabled={pct <= 10}>
