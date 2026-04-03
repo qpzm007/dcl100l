@@ -529,7 +529,6 @@
 
             // 절대 퍼센트로 줌 변경 (pan 보정 포함)
             const applyPct = (nextP, originX, originY) => {
-                if (zoomLocked) return;
                 setPct(prev => {
                     const clamped = clampPct(nextP);
                     const ratio = clamped / prev;
@@ -551,7 +550,6 @@
 
             // 휠 줌 (10% 단위)
             const handleWheel = (e) => {
-                if (zoomLocked) return;
                 e.preventDefault();
                 const rect = viewportRef.current.getBoundingClientRect();
                 const ox = e.clientX - rect.left;
@@ -563,11 +561,9 @@
             const handleVpMouseDown = (e) => {
                 if (e.button !== 0) return;
                 if (e.target.closest('[data-badge]')) return;
-                if (!zoomLocked) {
-                    setIsPanning(true);
-                    panStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
-                    e.preventDefault();
-                }
+                setIsPanning(true);
+                panStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
+                e.preventDefault();
             };
             const handleVpMouseMove = (e) => {
                 if (!isPanning || !panStart.current) return;
@@ -597,7 +593,6 @@
                 }
             };
             const handleTouchMove = (e) => {
-                if (zoomLocked) return;
                 if (e.touches.length === 2) {
                     e.preventDefault();
                     const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -629,7 +624,7 @@
             const cy = () => viewportRef.current?.clientHeight / 2 || 200;
             const zoomIn    = () => applyPct(pct + STEP, cx(), cy());
             const zoomOut   = () => applyPct(pct - STEP, cx(), cy());
-            const zoomReset = () => { if (!zoomLocked) { setPct(100); setPan({ x:0, y:0 }); } };
+            const zoomReset = () => { setPct(100); setPan({ x:0, y:0 }); };
 
             return (
                 <div className="min-h-screen flex flex-col">
@@ -815,7 +810,7 @@
                                 {/* 줌 컨트롤 바 - 관리자만 보임 */}
                                 {isAdmin && (
                                     <div className="zoom-controls">
-                                        <button className="zoom-btn" onClick={zoomOut} title="10% 축소" disabled={zoomLocked || pct <= 10}>
+                                        <button className="zoom-btn" onClick={zoomOut} title="10% 축소" disabled={pct <= 10}>
                                             <i className="fa-solid fa-minus"></i>
                                         </button>
                                         <div style={{width:1, height:16, background:'rgba(255,255,255,0.2)', margin:'0 2px'}}></div>
@@ -827,7 +822,7 @@
                                         >
                                             {pct}%
                                         </button>
-                                        <button className="zoom-btn" onClick={zoomIn} title="10% 확대" disabled={zoomLocked || pct >= 800}>
+                                        <button className="zoom-btn" onClick={zoomIn} title="10% 확대" disabled={pct >= 800}>
                                             <i className="fa-solid fa-plus"></i>
                                         </button>
                                         <div style={{width:1, height:16, background:'rgba(255,255,255,0.2)', margin:'0 2px'}}></div>
