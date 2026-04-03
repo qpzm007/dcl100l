@@ -262,12 +262,12 @@
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                if (id === 'admin' && pw === '1234') {
+                if (id === 'admin') {
                     onLogin('admin');
-                } else if (id === '3289935' || pw === '3289935') {
+                } else if (id === '3289935') {
                     onLogin('user');
                 } else {
-                    setError('아이디 또는 비밀번호가 올바르지 않습니다.');
+                    setError('아이디 또는 접속코드가 올바르지 않습니다.');
                 }
             };
 
@@ -295,18 +295,8 @@
                                         value={id}
                                         onChange={(e) => setId(e.target.value)}
                                         className="w-full text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-                                        placeholder="아이디 또는 접속코드를 입력하세요"
+                                        placeholder="관리자 또는 접속코드를 입력하세요"
                                         required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Password</label>
-                                    <input
-                                        type="password"
-                                        value={pw}
-                                        onChange={(e) => setPw(e.target.value)}
-                                        className="w-full text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-                                        placeholder="비밀번호를 입력하세요 (사용자는 입력 불필요)"
                                     />
                                 </div>
                             </div>
@@ -529,7 +519,7 @@
 
             // 절대 퍼센트로 줌 변경 (pan 보정 포함)
             const applyPct = (nextP, originX, originY) => {
-                if (zoomLocked || !isAdmin) return;
+                if (zoomLocked) return;
                 setPct(prev => {
                     const clamped = clampPct(nextP);
                     const ratio = clamped / prev;
@@ -539,17 +529,19 @@
                     };
                     setPan(newPan);
                     
-                    // 조립체 데이터에 반영
-                    setAssemblies(prevAsms => prevAsms.map(a => 
-                        a.id === currentAsmId ? { ...a, zoom: clamped, panX: newPan.x, panY: newPan.y } : a
-                    ));
+                    // 조립체 데이터에 반영 (관리자만 저장)
+                    if (isAdmin) {
+                        setAssemblies(prevAsms => prevAsms.map(a => 
+                            a.id === currentAsmId ? { ...a, zoom: clamped, panX: newPan.x, panY: newPan.y } : a
+                        ));
+                    }
                     return clamped;
                 });
             };
 
             // 휠 줌 (10% 단위)
             const handleWheel = (e) => {
-                if (zoomLocked || !isAdmin) return;
+                if (zoomLocked) return;
                 e.preventDefault();
                 const rect = viewportRef.current.getBoundingClientRect();
                 const ox = e.clientX - rect.left;
@@ -561,7 +553,7 @@
             const handleVpMouseDown = (e) => {
                 if (e.button !== 0) return;
                 if (e.target.closest('[data-badge]')) return;
-                if (!zoomLocked && isAdmin) {
+                if (!zoomLocked) {
                     setIsPanning(true);
                     panStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
                     e.preventDefault();
