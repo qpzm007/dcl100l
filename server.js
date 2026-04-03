@@ -25,24 +25,6 @@ if (!fs.existsSync(destImg)) {
     else if (fs.existsSync(srcImgPublic)) fs.copyFileSync(srcImgPublic, destImg);
 }
 
-// Multer 설정 (이미지 업로드)
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, IMAGES_DIR),
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        const asmId = req.params.id;
-        cb(null, `asm_${asmId}${ext}`);
-    }
-});
-const upload = multer({ 
-    storage,
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) cb(null, true);
-        else cb(new Error('이미지 파일만 업로드 가능합니다.'));
-    },
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB 제한
-});
-
 // 미들웨어
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -50,6 +32,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 // 이미지 폴더를 /images 경로로 별도 서빙
 app.use('/images', express.static(IMAGES_DIR));
+
 
 // --- DB 헬퍼 함수 ---
 function readDB() {
@@ -124,22 +107,9 @@ app.delete('/api/assemblies/:id', (req, res) => {
     res.json({ ok: true, currentAsmId: db.currentAsmId });
 });
 
-// [POST] 이미지 업로드 (multipart/form-data)
-app.post('/api/assemblies/:id/image', upload.single('image'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
-    const db = readDB();
-    const idx = db.assemblies.findIndex(a => a.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: '조립체를 찾을 수 없습니다.' });
-    
-    const imageUrl = `/images/${req.file.filename}`;
-    db.assemblies[idx].imageUrl = imageUrl;
-    writeDB(db);
-    res.json({ imageUrl });
-});
-
 // 루트 요청 → index.html 서빙
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html')); // index.html이 루트에 있음
 });
 
 // 서버 시작

@@ -137,53 +137,80 @@
         const db = firebase.firestore();
         const storage = firebase.storage();
 
-        // ─────────────────────────── API 헬퍼 (Firebase) ───────────────────────────
+        // ─────────────────────────── API 헬퍼 (Smart Switch: Local / Firebase) ───────────────────────────
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
         const API = {
             getData: async () => {
-                const doc = await db.collection('app').doc('state').get();
-                return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null };
-            },
-            saveAll: async (assemblies, currentAsmId) => {
-                await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                if (isLocal) {
+                    const res = await fetch('/api/data');
+                    return res.json();
+                } else {
+                    const doc = await db.collection('app').doc('state').get();
+                    return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null };
+                }
             },
             saveAssembly: async (asm) => {
-                const doc = await db.collection('app').doc('state').get();
-                if (doc.exists) {
-                    let { assemblies, currentAsmId } = doc.data();
-                    assemblies = assemblies.map(a => a.id === asm.id ? asm : a);
-                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                if (isLocal) {
+                    await fetch(`/api/assemblies/${asm.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(asm)
+                    });
+                } else {
+                    const doc = await db.collection('app').doc('state').get();
+                    if (doc.exists) {
+                        let { assemblies, currentAsmId } = doc.data();
+                        assemblies = assemblies.map(a => a.id === asm.id ? asm : a);
+                        await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                    }
                 }
             },
             addAssembly: async (asm) => {
-                const doc = await db.collection('app').doc('state').get();
-                if (doc.exists) {
-                    let { assemblies, currentAsmId } = doc.data();
-                    assemblies.push(asm);
-                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                if (isLocal) {
+                    await fetch('/api/assemblies', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(asm)
+                    });
                 } else {
-                    await db.collection('app').doc('state').set({ assemblies: [asm], currentAsmId: asm.id });
+                    const doc = await db.collection('app').doc('state').get();
+                    let assemblies = [], currentAsmId = asm.id;
+                    if (doc.exists) {
+                        ({ assemblies, currentAsmId } = doc.data());
+                        assemblies.push(asm);
+                    } else {
+                        assemblies = [asm];
+                    }
+                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
                 }
             },
             deleteAssembly: async (id) => {
-                const doc = await db.collection('app').doc('state').get();
-                if (doc.exists) {
-                    let { assemblies, currentAsmId } = doc.data();
-                    const filtered = assemblies.filter(a => a.id !== id);
-                    const newCurrentAsmId = currentAsmId === id ? (filtered[0]?.id || null) : currentAsmId;
-                    await db.collection('app').doc('state').set({ assemblies: filtered, currentAsmId: newCurrentAsmId });
-                    return { currentAsmId: newCurrentAsmId };
+                if (isLocal) {
+                    const res = await fetch(`/api/assemblies/${id}`, { method: 'DELETE' });
+                    return res.json();
+                } else {
+                    const doc = await db.collection('app').doc('state').get();
+                    if (doc.exists) {
+                        let { assemblies, currentAsmId } = doc.data();
+                        const filtered = assemblies.filter(a => a.id !== id);
+                        const newId = currentAsmId === id ? (filtered[0]?.id || null) : currentAsmId;
+                        await db.collection('app').doc('state').set({ assemblies: filtered, currentAsmId: newId });
+                        return { currentAsmId: newId };
+                    }
+                    return { currentAsmId: null };
                 }
-                return { currentAsmId: null };
             },
             setCurrent: async (id) => {
-                await db.collection('app').doc('state').update({ currentAsmId: id });
-            },
-            uploadImage: async (asmId, file) => {
-                const ext = file.name.split('.').pop();
-                const storageRef = storage.ref(`images/${asmId}_${Date.now()}.${ext}`);
-                await storageRef.put(file);
-                const url = await storageRef.getDownloadURL();
-                return { imageUrl: url };
+                if (isLocal) {
+                    await fetch('/api/current', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currentAsmId: id })
+                    });
+                } else {
+                    await db.collection('app').doc('state').update({ currentAsmId: id });
+                }
             }
         };
 
@@ -226,8 +253,80 @@
             saveIndicatorTimer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
         }
 
+        // ─────────────────────────── 로그인 컴포넌트 ───────────────────────────
+        function Login({ onLogin }) {
+            const [id, setId] = useState('');
+            const [pw, setPw] = useState('');
+            const [error, setError] = useState('');
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (id === 'admin' && pw === '1234') {
+                    onLogin('admin');
+                } else if (id === '3289935' || pw === '3289935') {
+                    onLogin('user');
+                } else {
+                    setError('아이디 또는 비밀번호가 올바르지 않습니다.');
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900 flex items-center justify-center z-[1000] p-4 text-slate-800">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-300">
+                        <div className="bg-slate-800 p-8 text-center text-white">
+                            <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                                <i className="fa-solid fa-shield-halved text-3xl"></i>
+                            </div>
+                            <h1 className="text-2xl font-bold">시스템 로그인</h1>
+                            <p className="text-slate-400 text-sm mt-2">DCL100L 스마트 재고 관리 보드</p>
+                        </div>
+                        <form onSubmit={handleLogin} className="p-8 space-y-6">
+                            {error && (
+                                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium border border-red-100 flex items-center gap-2">
+                                    <i className="fa-solid fa-circle-exclamation"></i> {error}
+                                </div>
+                            )}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">ID / CODE</label>
+                                    <input
+                                        type="text"
+                                        value={id}
+                                        onChange={(e) => setId(e.target.value)}
+                                        className="w-full text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                        placeholder="아이디 또는 접속코드를 입력하세요"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Password</label>
+                                    <input
+                                        type="password"
+                                        value={pw}
+                                        onChange={(e) => setPw(e.target.value)}
+                                        className="w-full text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                        placeholder="비밀번호를 입력하세요 (사용자는 입력 불필요)"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                            >
+                                <i className="fa-solid fa-right-to-bracket"></i> 로그인하기
+                            </button>
+                            <div className="text-center text-xs text-slate-400 pt-2 font-medium">
+                                <p>© 2026 DCL100L Management System</p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
         // ─────────────────────────── 앱 컴포넌트 ───────────────────────────
         function App() {
+            const [userRole, setUserRole] = useState(() => localStorage.getItem('userRole'));
             const [assemblies, setAssemblies] = useState([]);
             const [currentAsmId, setCurrentAsmId] = useState(null);
             const [selectedPartId, setSelectedPartId] = useState(null);
@@ -247,8 +346,22 @@
             const assembliesRef = useRef(assemblies);
             assembliesRef.current = assemblies;
 
+            const isAdmin = userRole === 'admin';
+
+            const handleLogin = (role) => {
+                setUserRole(role);
+                localStorage.setItem('userRole', role);
+            };
+
+            const handleLogout = () => {
+                setUserRole(null);
+                localStorage.removeItem('userRole');
+            };
+
             // 초기 데이터 로드 (서버에서)
             useEffect(() => {
+                if (!userRole) return;
+                setIsLoaded(false);
                 API.getData()
                     .then(data => {
                         const asms = (data.assemblies && data.assemblies.length > 0)
@@ -264,10 +377,11 @@
                         setCurrentAsmId(initial.id);
                     })
                     .finally(() => setIsLoaded(true));
-            }, []);
+            }, [userRole]);
 
             // 자동 저장 (debounce 500ms)
             const autoSave = useCallback((asms, curId) => {
+                if (!isAdmin) return; // 사용자 권한은 저장 불가
                 clearTimeout(saveTimer);
                 saveTimer = setTimeout(async () => {
                     try {
@@ -281,7 +395,7 @@
                         showSaveIndicator('저장 실패 ✗');
                     }
                 }, 500);
-            }, []);
+            }, [isAdmin]);
 
             // 조립체 변경 시 자동 저장 트리거
             useEffect(() => {
@@ -289,6 +403,8 @@
                     autoSave(assemblies, currentAsmId);
                 }
             }, [assemblies, currentAsmId, isLoaded]);
+
+            if (!userRole) return <Login onLogin={handleLogin} />;
 
             if (!isLoaded) return (
                 <div className="min-h-screen flex items-center justify-center">
@@ -304,6 +420,7 @@
 
             // ─── 조립체 핸들러 ───
             const handleAddAssembly = async () => {
+                if (!isAdmin) return;
                 const nextIdx = assemblies.length + 1;  // 1-based 순번
                 const newAsm = createDefaultAssembly(`조립체 ${nextIdx}`, nextIdx);
                 try {
@@ -314,6 +431,7 @@
             };
 
             const handleRenameAssembly = () => {
+                if (!isAdmin) return;
                 const newName = prompt("조립체 이름을 입력하세요:", currentAsm.name);
                 if (newName && newName.trim()) {
                     setAssemblies(prev => prev.map(a => a.id === currentAsmId ? { ...a, name: newName.trim() } : a));
@@ -321,6 +439,7 @@
             };
 
             const handleDeleteAssembly = async () => {
+                if (!isAdmin) return;
                 if (assemblies.length <= 1) { alert("최소 1개의 조립체는 존재해야 합니다."); return; }
                 if (confirm(`'${currentAsm.name}' 조립체를 삭제하시겠습니까?`)) {
                     try {
@@ -333,18 +452,14 @@
                 }
             };
 
-            const handleImageUpload = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                try {
-                    const result = await API.uploadImage(currentAsmId, file);
-                    setAssemblies(prev => prev.map(a => a.id === currentAsmId ? { ...a, imageUrl: result.imageUrl + '?t=' + Date.now() } : a));
-                    showSaveIndicator('이미지 업로드 완료 ✓');
-                } catch(e) { alert('이미지 업로드 실패: ' + e.message); }
+            // 이미지 업로드 기능 제거 (깃허브 폴더 직접 업로드 방식 사용)
+            const handleImageUpload = (e) => {
+                alert('이미지는 직접 images 폴더에 넣고 프로젝트를 관리해주세요.');
             };
 
             // ─── 파트 핸들러 ───
             const handleAddPart = () => {
+                if (!isAdmin) return;
                 const newPart = createDefaultPart();
                 setAssemblies(prev => prev.map(a =>
                     a.id === currentAsmId ? { ...a, parts: [...a.parts, newPart] } : a
@@ -353,6 +468,7 @@
             };
 
             const handleDeletePart = (partId) => {
+                if (!isAdmin) return;
                 setAssemblies(prev => prev.map(a =>
                     a.id === currentAsmId ? { ...a, parts: a.parts.filter(p => p.id !== partId) } : a
                 ));
@@ -360,6 +476,7 @@
             };
 
             const updatePart = (partId, field, value) => {
+                if (!isAdmin) return;
                 setAssemblies(prev => prev.map(a =>
                     a.id === currentAsmId ? {
                         ...a,
@@ -371,7 +488,7 @@
             // ─── 드래그 엔진 (Pointer Events) ───
             const handlePointerDown = (e, part) => {
                 setSelectedPartId(part.id);
-                if (part.isLocked) return;
+                if (part.isLocked || !isAdmin) return;
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
                 setDragState({ id: part.id, x: part.x, y: part.y });
@@ -500,14 +617,21 @@
                             </select>
                         </div>
                         <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                            <button onClick={handleAddAssembly} className="flex-shrink-0 flex items-center gap-1 bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded text-sm font-medium transition">
-                                <i className="fa-solid fa-plus"></i> 새 조립체 추가
-                            </button>
-                            <button onClick={handleRenameAssembly} className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm font-medium transition">
-                                <i className="fa-solid fa-pen"></i> 이름 변경
-                            </button>
-                            <button onClick={handleDeleteAssembly} className="flex-shrink-0 flex items-center gap-1 bg-red-600 hover:bg-red-500 px-3 py-2 rounded text-sm font-medium transition">
-                                <i className="fa-solid fa-trash"></i> 삭제
+                            {isAdmin && (
+                                <>
+                                    <button onClick={handleAddAssembly} className="flex-shrink-0 flex items-center gap-1 bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded text-sm font-medium transition">
+                                        <i className="fa-solid fa-plus"></i> 새 조립체 추가
+                                    </button>
+                                    <button onClick={handleRenameAssembly} className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm font-medium transition">
+                                        <i className="fa-solid fa-pen"></i> 이름 변경
+                                    </button>
+                                    <button onClick={handleDeleteAssembly} className="flex-shrink-0 flex items-center gap-1 bg-red-600 hover:bg-red-500 px-3 py-2 rounded text-sm font-medium transition">
+                                        <i className="fa-solid fa-trash"></i> 삭제
+                                    </button>
+                                </>
+                            )}
+                            <button onClick={handleLogout} className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm font-medium transition text-red-400">
+                                <i className="fa-solid fa-right-from-bracket"></i> 로그아웃
                             </button>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -526,10 +650,11 @@
                                     파트리스트
                                 </h2>
                                 <div className="flex gap-2">
-                                    <label className="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded text-sm transition shadow-sm">
-                                        이미지 업로드
-                                        <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                                    </label>
+                                    {isAdmin && (
+                                        <label title="이미지는 images 폴더에 명번대로 직접 넣어주세요" className="bg-slate-200 text-slate-500 px-3 py-1.5 rounded text-sm opacity-50 cursor-not-allowed hidden sm:block">
+                                            이미지 직접 업로드 불가
+                                        </label>
+                                    )}
                                     <button
                                         onClick={() => setFullscreenPanel(fullscreenPanel === 'left' ? null : 'left')}
                                         className="bg-white border border-gray-300 hover:bg-blue-50 text-blue-600 px-3 py-1.5 rounded text-sm transition shadow-sm flex items-center gap-1 font-bold"
@@ -706,41 +831,58 @@
                                 <div className="p-4 h-auto flex flex-col justify-center min-h-[120px]">
                                     {selectedPart ? (
                                         <div className="space-y-4">
-                                            <div className="flex items-center justify-between mb-2 bg-slate-50 p-2 rounded border border-slate-200">
-                                                <div>
-                                                    <span className="font-bold text-gray-700 block">위치 고정 (잠금)</span>
-                                                    <span className="text-[11px] text-gray-500">모바일 화면 확대 시 움직이지 않게 고정합니다.</span>
+                                            {isAdmin ? (
+                                                <>
+                                                    <div className="flex items-center justify-between mb-2 bg-slate-50 p-2 rounded border border-slate-200">
+                                                        <div>
+                                                            <span className="font-bold text-gray-700 block">위치 고정 (잠금)</span>
+                                                            <span className="text-[11px] text-gray-500">모바일 화면 확대 시 움직이지 않게 고정합니다.</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => updatePart(selectedPart.id, 'isLocked', !selectedPart.isLocked)}
+                                                            className={`px-3 py-1.5 rounded font-bold text-sm transition-colors flex items-center gap-2 border ${selectedPart.isLocked ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+                                                        >
+                                                            {selectedPart.isLocked ? <><i className="fa-solid fa-lock text-red-400"></i> 고정됨</> : <><i className="fa-solid fa-unlock text-blue-500"></i> 이동가능</>}
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <label className="text-sm font-medium w-24 text-gray-700">배지 높이</label>
+                                                        <input type="range" min="20" max="100"
+                                                            value={selectedPart.size}
+                                                            onChange={(e) => updatePart(selectedPart.id, 'size', Number(e.target.value))}
+                                                            className="flex-grow accent-blue-600"
+                                                        />
+                                                        <span className="text-sm font-mono w-10 text-right">{selectedPart.size}px</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <label className="text-sm font-medium w-24 text-gray-700">글자 크기</label>
+                                                        <input type="range" min="10" max="50"
+                                                            value={selectedPart.fSize}
+                                                            onChange={(e) => updatePart(selectedPart.id, 'fSize', Number(e.target.value))}
+                                                            className="flex-grow accent-blue-600"
+                                                        />
+                                                        <span className="text-sm font-mono w-10 text-right">{selectedPart.fSize}px</span>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                                                            {currentAsm.parts.findIndex(p => p.id === selectedPart.id) + 1}
+                                                        </div>
+                                                        <span className="font-bold text-slate-700">{selectedPart.name || '품명 미입력'}</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2 text-sm">
+                                                        <div className="text-slate-500">품번: <span className="text-slate-900 font-mono">{selectedPart.no || '-'}</span></div>
+                                                        <div className="text-slate-500">현재고: <span className="text-slate-900 font-bold">{fmtStock(selectedPart.stock)}</span></div>
+                                                    </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => updatePart(selectedPart.id, 'isLocked', !selectedPart.isLocked)}
-                                                    className={`px-3 py-1.5 rounded font-bold text-sm transition-colors flex items-center gap-2 border ${selectedPart.isLocked ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
-                                                >
-                                                    {selectedPart.isLocked ? <><i className="fa-solid fa-lock text-red-400"></i> 고정됨</> : <><i className="fa-solid fa-unlock text-blue-500"></i> 이동가능</>}
-                                                </button>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <label className="text-sm font-medium w-24 text-gray-700">배지 높이</label>
-                                                <input type="range" min="20" max="100"
-                                                    value={selectedPart.size}
-                                                    onChange={(e) => updatePart(selectedPart.id, 'size', Number(e.target.value))}
-                                                    className="flex-grow accent-blue-600"
-                                                />
-                                                <span className="text-sm font-mono w-10 text-right">{selectedPart.size}px</span>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <label className="text-sm font-medium w-24 text-gray-700">글자 크기</label>
-                                                <input type="range" min="10" max="50"
-                                                    value={selectedPart.fSize}
-                                                    onChange={(e) => updatePart(selectedPart.id, 'fSize', Number(e.target.value))}
-                                                    className="flex-grow accent-blue-600"
-                                                />
-                                                <span className="text-sm font-mono w-10 text-right">{selectedPart.fSize}px</span>
-                                            </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="text-center text-gray-400 flex flex-col items-center gap-2">
                                             <i className="fa-solid fa-arrow-pointer text-2xl"></i>
-                                            <p className="text-sm">왼쪽 파트리스트에서 <strong>수량 배지(원형)</strong>를 클릭하면<br/>해당 배지의 크기를 조절할 수 있습니다.</p>
+                                            <p className="text-sm">왼쪽 파트리스트에서 <strong>수량 배지(원형)</strong>를 클릭하면<br/>상세 정보를 확인할 수 있습니다.</p>
                                         </div>
                                     )}
                                 </div>
@@ -793,6 +935,7 @@
                                                             value={part.no}
                                                             onChange={(e) => updatePart(part.id, 'no', e.target.value)}
                                                             className="editable-cell font-mono text-sm"
+                                                            readOnly={!isAdmin}
                                                         />
                                                     </td>
                                                     <td className="p-2">
@@ -800,6 +943,7 @@
                                                             value={part.name}
                                                             onChange={(e) => updatePart(part.id, 'name', e.target.value)}
                                                             className="editable-cell text-sm font-medium text-gray-800"
+                                                            readOnly={!isAdmin}
                                                         />
                                                     </td>
                                                     <td className="p-2 text-center">
@@ -807,7 +951,8 @@
                                                             <input type="number" min="0"
                                                                 value={part.stock}
                                                                 onChange={(e) => updatePart(part.id, 'stock', e.target.value)}
-                                                                className="w-20 text-center border border-gray-300 rounded p-1 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                                className="w-20 text-center border border-gray-300 rounded p-1 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                                                                disabled={!isAdmin}
                                                             />
                                                             <span className={`text-[10px] font-mono font-semibold ${parseInt(part.stock)||0 > 0 ? 'text-blue-600' : 'text-red-500'}`}>
                                                                 {fmtStock(part.stock)}
@@ -815,26 +960,30 @@
                                                         </div>
                                                     </td>
                                                     <td className="p-2 text-center">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDeletePart(part.id); }}
-                                                            className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition"
-                                                            title="부품 삭제"
-                                                        >
-                                                            <i className="fa-solid fa-xmark text-lg"></i>
-                                                        </button>
+                                                        {isAdmin && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleDeletePart(part.id); }}
+                                                                className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition"
+                                                                title="부품 삭제"
+                                                            >
+                                                                <i className="fa-solid fa-xmark text-lg"></i>
+                                                            </button>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ))}
-                                            <tr>
-                                                <td colSpan="5" className="p-2">
-                                                    <button
-                                                        onClick={handleAddPart}
-                                                        className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition flex items-center justify-center gap-2"
-                                                    >
-                                                        <i className="fa-solid fa-circle-plus"></i> 부품 추가 (Row 추가)
-                                                    </button>
-                                                </td>
-                                            </tr>
+                                            {isAdmin && (
+                                                <tr>
+                                                    <td colSpan="5" className="p-2">
+                                                        <button
+                                                            onClick={handleAddPart}
+                                                            className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition flex items-center justify-center gap-2"
+                                                        >
+                                                            <i className="fa-solid fa-circle-plus"></i> 부품 추가 (Row 추가)
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
