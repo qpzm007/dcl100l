@@ -468,7 +468,9 @@
                 const newName = prompt('하위 조립체 이름을 입력하세요:', (parent?.name || '') + ' 하위');
                 if (!newName) return;
 
-                const newAsm = createDefaultAssembly(newName, 1, parentId);
+                // 전체 개수를 기반으로 고유 이미지 인덱스 생성
+                const nextImgIdx = assemblies.length + 1;
+                const newAsm = createDefaultAssembly(newName, nextImgIdx, parentId);
                 const updated = [...assemblies, newAsm];
                 setAssemblies(updated);
                 setCurrentAsmId(newAsm.id);
