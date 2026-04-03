@@ -235,14 +235,18 @@
         });
 
         // index: 1-based 조립체 순번 (1번 → 1.png, 2번 → 2.png)
-        const createDefaultAssembly = (name = "새 조립체", index = 1, parentId = null) => ({
-            id: `asm_${Date.now()}`,
-            name,
-            parentId, // 부모 ID (null이면 최상위)
-            imageUrl: `images/${index}.png`,
-            zoom: 100, panX: 0, panY: 0, zoomLocked: false,
-            parts: [createDefaultPart()]
-        });
+        const createDefaultAssembly = (name = "새 조립체", index = 1, parentId = null) => {
+            // 이미지 개수가 20개라고 가정하고 순환 (필요시 조정)
+            const imgIdx = ((index - 1) % 20) + 1;
+            return {
+                id: `asm_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                name,
+                parentId, // 부모 ID (null이면 최상위)
+                imageUrl: `images/${imgIdx}.png`,
+                zoom: 100, panX: 0, panY: 0, zoomLocked: false,
+                parts: [createDefaultPart()]
+            };
+        };
 
         // 천단위 콤마 포맷
         const fmtStock = (v) => {
@@ -338,7 +342,10 @@
             const [dragState, setDragState] = useState(null);
             const [isLoaded, setIsLoaded] = useState(false);
             const [fullscreenPanel, setFullscreenPanel] = useState(null);
-            const [isRightPanelOpen, setIsRightPanelOpen] = useState(true); // 사이드바(좌/우) 열림 상태 (기본 펼침)
+            const [isRightPanelOpen, setIsRightPanelOpen] = useState(() => {
+                // 모바일(768px 미만)에서는 기본적으로 닫힘
+                return window.innerWidth >= 768;
+            }); 
             const [expandedAsmIds, setExpandedAsmIds] = useState(new Set()); // 펼쳐진 조립체 ID들
             // 줌 상태 (pct: 10~800 정수, 10% 단위)
             const [pct, setPct] = useState(100);  // 100 = 100%
@@ -862,10 +869,9 @@
                                 <i className="fa-solid fa-right-from-bracket"></i> 로그아웃
                             </button>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-400">
-                            <i className="fa-solid fa-server text-green-400"></i>
-                            <span>Node.js 서버 연동 중 • db.json 자동저장</span>
-                        </div>
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                             <span>관련 문의: 시스템 관리팀</span>
+                         </div>
                     </header>
 
                     <div className="flex-grow p-2 sm:p-4 flex flex-col lg:flex-row gap-4 max-w-[1920px] mx-auto w-full overflow-hidden">
