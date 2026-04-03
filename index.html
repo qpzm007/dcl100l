@@ -829,6 +829,11 @@
                                                     viewBox={`0 0 ${part.fSize * 22} ${part.fSize * 2.5}`}
                                                     style={{ overflow: 'visible', filter: isSelected ? 'drop-shadow(0 0 8px rgba(59,130,246,0.6))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
                                                 >
+                                                    <defs>
+                                                        <clipPath id={`clip-${part.id}`}>
+                                                            <rect x={part.fSize * 7} y="0" width={part.fSize * 10.8} height={part.fSize * 2.5} />
+                                                        </clipPath>
+                                                    </defs>
                                                     <g>
                                                         {/* 전체 테두리 */}
                                                         <rect x="0" y="0" width={part.fSize * 22} height={part.fSize * 2.2} fill="#fff" stroke="#000" strokeWidth="1.5" />
@@ -843,7 +848,7 @@
                                                             {part.no || '—'}
                                                         </text>
                                                         
-                                                        {/* 품명 칸 - textLength로 공간 자동 조절 */}
+                                                        {/* 품명 칸 - textLength로 공간 자동 조절 + clipPath로 안전장치 */}
                                                         <rect x={part.fSize * 7} y="0" width={part.fSize * 11} height={part.fSize * 2.2} fill="#fff" stroke="#000" strokeWidth="1" />
                                                         <text 
                                                             x={part.fSize * 7.3} 
@@ -853,6 +858,7 @@
                                                             fill={part.name ? "#000" : "#9ca3af"}
                                                             textLength={part.fSize * 10.4} 
                                                             lengthAdjust="spacingAndGlyphs"
+                                                            clipPath={`url(#clip-${part.id})`}
                                                         >
                                                             {part.name || '—'}
                                                         </text>
@@ -871,7 +877,7 @@
                                                 </svg>
                                             </div>
                                         );
-                                    })}
+                                    })};
                                     </div>
                                 </div>
                                 </div>
