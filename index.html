@@ -230,7 +230,8 @@
         const createDefaultPart = () => ({
             id: `part_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             no: '', name: '', stock: 0,
-            x: 50, y: 50, size: 32, fSize: 15, isLocked: false
+            x: 50, y: 50, size: 32, fSize: 15, isLocked: false,
+            wNo: 4, wName: 13, wStock: 3 // 기본 너비 배율
         });
 
         // index: 1-based 조립체 순번 (1번 → 1.png, 2번 → 2.png)
@@ -823,66 +824,67 @@
                                                 }}
                                             >
                                                 {/* SVG를 사용하여 폰트 클램핑 문제 해결 및 레이아웃 최적화 */}
-                                                <svg 
-                                                    width={(part.fSize || 14) * 22} 
-                                                    height={(part.fSize || 14) * 2.5} 
-                                                    viewBox={`0 0 ${(part.fSize || 14) * 22} ${(part.fSize || 14) * 2.5}`}
-                                                    style={{ overflow: 'visible', filter: isSelected ? 'drop-shadow(0 0 8px rgba(59,130,246,0.6))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
-                                                >
-                                                    <g>
-                                                        {/* 전체 테두리 */}
-                                                        <rect x="0" y="0" width={(part.fSize || 14) * 22} height={(part.fSize || 14) * 2.2} fill="#fff" stroke="#000" strokeWidth="1.5" />
-                                                        
-                                                        {/* 순번 칸 (회색) */}
-                                                        <rect x="0" y="0" width={(part.fSize || 14) * 2} height={(part.fSize || 14) * 2.2} fill="#f3f4f6" stroke="#000" strokeWidth="1" />
-                                                        <foreignObject x="0" y="0" width={(part.fSize || 14) * 2} height={(part.fSize || 14) * 2.2}>
-                                                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: (part.fSize || 14) + 'px', fontWeight: 'bold', lineHeight: 'normal', color: '#000' }}>
-                                                                {index + 1}
-                                                            </div>
-                                                        </foreignObject>
-                                                        
-                                                        {/* 품번 칸 */}
-                                                        <rect x={(part.fSize || 14) * 2} y="0" width={(part.fSize || 14) * 4} height={(part.fSize || 14) * 2.2} fill="#fff" stroke="#000" strokeWidth="1" />
-                                                        <foreignObject x={(part.fSize || 14) * 2.3} y="0" width={(part.fSize || 14) * 3.4} height={(part.fSize || 14) * 2.2}>
-                                                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', fontSize: (part.fSize || 14) + 'px', fontWeight: 'bold', lineHeight: 'normal', color: part.no ? '#000' : '#9ca3af', fontFamily: 'monospace', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                                                {part.no || '—'}
-                                                            </div>
-                                                        </foreignObject>
-                                                        
-                                                        {/* 품명 칸 - foreignObject + CSS로 완벽한 오버플로우 관리 */}
-                                                        <rect x={(part.fSize || 14) * 6} y="0" width={(part.fSize || 14) * 13} height={(part.fSize || 14) * 2.2} fill="#fff" stroke="#000" strokeWidth="1" />
-                                                        <foreignObject x={(part.fSize || 14) * 6.3} y="0" width={(part.fSize || 14) * 12.4} height={(part.fSize || 14) * 2.2}>
-                                                            <div style={{ 
-                                                                width: '100%', 
-                                                                height: '100%', 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                fontSize: (part.fSize || 14) + 'px', 
-                                                                fontWeight: '600', 
-                                                                lineHeight: 'normal',
-                                                                color: part.name ? '#000' : '#9ca3af', 
-                                                                overflow: 'hidden', 
-                                                                whiteSpace: 'nowrap',
-                                                                textOverflow: 'ellipsis'
-                                                            }}>
-                                                                {part.name || '—'}
-                                                            </div>
-                                                        </foreignObject>
-                                                        
-                                                        {/* 재고 칸 (검정) */}
-                                                        <rect x={(part.fSize || 14) * 19} y="0" width={(part.fSize || 14) * 3} height={(part.fSize || 14) * 2.2} fill="#000" />
-                                                        <foreignObject x={(part.fSize || 14) * 19} y="0" width={(part.fSize || 14) * 3} height={(part.fSize || 14) * 2.2}>
-                                                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: (part.fSize || 14) + 'px', fontWeight: '900', lineHeight: 'normal', color: stock > 0 ? '#fff' : '#f87171', fontFamily: 'monospace' }}>
-                                                                {fmtStock(stock)}
-                                                            </div>
-                                                        </foreignObject>
-                                                        
-                                                        {/* 잠금 아이콘 */}
-                                                        {isLocked && (
-                                                            <circle cx={(part.fSize || 14) * 22} cy="0" r={(part.fSize || 14) * 0.6} fill="#1e293b" stroke="#fff" strokeWidth="1.5" />
-                                                        )}
-                                                    </g>
-                                                </svg>
+                                                {(() => {
+                                                    const fs = (part.fSize || 14);
+                                                    const wn = (part.wNo || 4);
+                                                    const wm = (part.wName || 13);
+                                                    const ws = (part.wStock || 3);
+                                                    const totalW = (2 + wn + wm + ws) * fs;
+                                                    return (
+                                                        <svg 
+                                                            width={totalW} 
+                                                            height={fs * 2.5} 
+                                                            viewBox={`0 0 ${totalW} ${fs * 2.5}`}
+                                                            style={{ overflow: 'visible', filter: isSelected ? 'drop-shadow(0 0 8px rgba(59,130,246,0.6))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
+                                                        >
+                                                            <g>
+                                                                {/* 전체 테두리 */}
+                                                                <rect x="0" y="0" width={totalW} height={fs * 2.2} fill="#fff" stroke="#000" strokeWidth="1.5" />
+                                                                
+                                                                {/* 순번 칸 (회색) */}
+                                                                <rect x="0" y="0" width={fs * 2} height={fs * 2.2} fill="#f3f4f6" stroke="#000" strokeWidth="1" />
+                                                                <foreignObject x="0" y="0" width={fs * 2} height={fs * 2.2}>
+                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs + 'px', fontWeight: 'bold', lineHeight: 'normal', color: '#000' }}>
+                                                                        {index + 1}
+                                                                    </div>
+                                                                </foreignObject>
+                                                                
+                                                                {/* 품번 칸 */}
+                                                                <rect x={fs * 2} y="0" width={fs * wn} height={fs * 2.2} fill="#fff" stroke="#000" strokeWidth="1" />
+                                                                <foreignObject x={fs * 2.3} y="0" width={fs * (wn - 0.6)} height={fs * 2.2}>
+                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', fontSize: fs + 'px', fontWeight: 'bold', lineHeight: 'normal', color: part.no ? '#000' : '#9ca3af', fontFamily: 'monospace', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                                        {part.no || '—'}
+                                                                    </div>
+                                                                </foreignObject>
+                                                                
+                                                                {/* 품명 칸 */}
+                                                                <rect x={fs * (2 + wn)} y="0" width={fs * wm} height={fs * 2.2} fill="#fff" stroke="#000" strokeWidth="1" />
+                                                                <foreignObject x={fs * (2 + wn + 0.3)} y="0" width={fs * (wm - 0.6)} height={fs * 2.2}>
+                                                                    <div style={{ 
+                                                                        width: '100%', height: '100%', display: 'flex', alignItems: 'center', 
+                                                                        fontSize: fs + 'px', fontWeight: '600', lineHeight: 'normal',
+                                                                        color: part.name ? '#000' : '#9ca3af', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'
+                                                                    }}>
+                                                                        {part.name || '—'}
+                                                                    </div>
+                                                                </foreignObject>
+                                                                
+                                                                {/* 재고 칸 (검정) */}
+                                                                <rect x={fs * (2 + wn + wm)} y="0" width={fs * ws} height={fs * 2.2} fill="#000" />
+                                                                <foreignObject x={fs * (2 + wn + wm)} y="0" width={fs * ws} height={fs * 2.2}>
+                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs + 'px', fontWeight: '900', lineHeight: 'normal', color: stock > 0 ? '#fff' : '#f87171', fontFamily: 'monospace' }}>
+                                                                        {fmtStock(stock)}
+                                                                    </div>
+                                                                </foreignObject>
+                                                                
+                                                                {/* 잠금 아이콘 */}
+                                                                {isLocked && (
+                                                                    <circle cx={totalW} cy="0" r={fs * 0.6} fill="#1e293b" stroke="#fff" strokeWidth="1.5" />
+                                                                )}
+                                                            </g>
+                                                        </svg>
+                                                    );
+                                                })()}
                                             </div>
                                         );
                                     })}
@@ -1018,6 +1020,7 @@
                                                 <th className="p-2 w-12 text-center text-xs font-semibold text-gray-500">순번</th>
                                                 <th className="p-2 w-1/4 text-xs font-semibold text-gray-500">품번</th>
                                                 <th className="p-2 w-auto text-xs font-semibold text-gray-500">품명</th>
+                                                {isAdmin && <th className="p-2 w-24 text-center text-xs font-semibold text-gray-500">배각 가로폭(No/Nm/St)</th>}
                                                 <th className="p-2 w-20 text-center text-xs font-semibold text-gray-500">재고</th>
                                                 <th className="p-2 w-12 text-center text-xs font-semibold text-gray-500">삭제</th>
                                             </tr>
