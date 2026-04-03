@@ -745,9 +745,12 @@
                         {/* 왼쪽: 파트리스트 이미지 패널 */}
                         <div className={`${fullscreenPanel === 'left' ? 'fixed inset-0 z-[100] w-full h-full bg-white rounded-none' : (fullscreenPanel === 'right' ? 'hidden' : (isRightPanelOpen ? 'w-full lg:w-[65%]' : 'w-full'))} flex flex-col transition-all duration-300 ease-in-out bg-white rounded-xl shadow border border-gray-200 overflow-hidden`}>
                             <div className={`bg-slate-100 border-b p-3 flex justify-between items-center ${fullscreenPanel === 'left' ? 'rounded-none' : 'rounded-t-xl'}`}>
-                                <h2 className="text-gray-700 font-bold flex items-center gap-2">
-                                    <i className="fa-solid fa-image text-gray-500"></i>
-                                    파트리스트
+                                <h2 className="text-gray-700 font-bold flex items-center gap-2 overflow-hidden truncate">
+                                    <i className="fa-solid fa-image text-gray-500 flex-shrink-0"></i>
+                                    <span className="truncate">{currentAsm?.name || '파트리스트'}</span>
+                                    <span className="text-xs font-normal text-gray-400 flex-shrink-0">
+                                        ({currentAsm?.imageUrl?.split('/').pop() || '이미지 없음'})
+                                    </span>
                                 </h2>
                                 <div className="flex gap-2">
                                     <button
