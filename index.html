@@ -613,6 +613,25 @@
             };
             const handleTouchEnd = () => { lastPinchDist.current = null; };
 
+            const handleToggleZoomLock = () => {
+                if (!isAdmin) return;
+                const nextLocked = !zoomLocked;
+                setZoomLocked(nextLocked);
+                setAssemblies(prev => prev.map(a => 
+                    a.id === currentAsmId ? { ...a, zoomLocked: nextLocked } : a
+                ));
+            };
+
+            // 조립체 전환 시 해당 조립체의 저장된 줌/팬 적용
+            useEffect(() => {
+                const currentAsm = assemblies.find(a => a.id === currentAsmId);
+                if (currentAsm && isLoaded) {
+                    setPct(currentAsm.zoom || 100);
+                    setPan({ x: currentAsm.panX || 0, y: currentAsm.panY || 0 });
+                    setZoomLocked(currentAsm.zoomLocked || false);
+                }
+            }, [currentAsmId, isLoaded]);
+
             // 줌 버튼 (10% 단위)
             const cx = () => viewportRef.current?.clientWidth  / 2 || 200;
             const cy = () => viewportRef.current?.clientHeight / 2 || 200;
