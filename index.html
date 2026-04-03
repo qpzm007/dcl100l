@@ -801,8 +801,7 @@
                                 </div>
                                 </div>
                                 </div>
-
-                                {/* 줌 컨트롤 바 */}
+                                {/* 줌 컨트롤 바 - 관리자만 보임 */}
                                 {isAdmin && (
                                     <div className="zoom-controls">
                                         <button className="zoom-btn" onClick={zoomOut} title="10% 축소" disabled={zoomLocked || pct <= 10}>
@@ -955,24 +954,24 @@
                                                         <input type="text" placeholder="품번 입력"
                                                             value={part.no}
                                                             onChange={(e) => updatePart(part.id, 'no', e.target.value)}
-                                                            className="editable-cell font-mono text-sm"
-                                                            readOnly={!isAdmin}
+                                                            className="editable-cell font-mono text-sm disabled:bg-transparent disabled:border-none"
+                                                            disabled={!isAdmin}
                                                         />
                                                     </td>
                                                     <td className="p-2">
                                                         <input type="text" placeholder="품명 입력"
                                                             value={part.name}
                                                             onChange={(e) => updatePart(part.id, 'name', e.target.value)}
-                                                            className="editable-cell text-sm font-medium text-gray-800"
-                                                            readOnly={!isAdmin}
+                                                            className="editable-cell text-sm font-medium text-gray-800 disabled:bg-transparent disabled:border-none"
+                                                            disabled={!isAdmin}
                                                         />
                                                     </td>
                                                     <td className="p-2 text-center">
                                                         <div className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                                            <input type="number" min="0"
+                                                            <input type="number" min="0" 
                                                                 value={part.stock}
                                                                 onChange={(e) => updatePart(part.id, 'stock', e.target.value)}
-                                                                className="w-20 text-center border border-gray-300 rounded p-1 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                                                                className="w-20 text-center border border-gray-300 rounded p-1 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-transparent disabled:border-none disabled:text-slate-900"
                                                                 disabled={!isAdmin}
                                                             />
                                                             <span className={`text-[10px] font-mono font-semibold ${parseInt(part.stock)||0 > 0 ? 'text-blue-600' : 'text-red-500'}`}>
