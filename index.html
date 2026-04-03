@@ -811,68 +811,56 @@
                                                 onPointerMove={handlePointerMove}
                                                 onPointerUp={handlePointerUp}
                                                 onPointerCancel={handlePointerUp}
-                                                className={`absolute transform -translate-x-1/2 -translate-y-1/2 select-none touch-none shadow-md
-                                                    ${isSelected ? 'z-50 drop-shadow-xl brightness-95' : 'z-10'}
+                                                className={`absolute transform -translate-x-1/2 -translate-y-1/2 select-none touch-none
+                                                    ${isSelected ? 'z-50' : 'z-10'}
                                                     ${isDragging ? 'opacity-90' : ''}
                                                     ${isLocked ? 'cursor-default' : 'cursor-move'}
                                                 `}
                                                 style={{
                                                     left: `${posX}%`,
                                                     top: `${posY}%`,
-                                                    fontSize: `${part.fSize}px`,
-                                                    transition: isDragging ? 'none' : 'all 0.15s ease-in-out',
-                                                    display: 'flex',
-                                                    alignItems: 'stretch', // 세로 높이 맞춤
-                                                    border: '1px solid #000000', // 전체 테두리 검정
-                                                    backgroundColor: '#ffffff',
-                                                    whiteSpace: 'nowrap',
-                                                    margin: 0,
-                                                    padding: 0,
+                                                    transition: isDragging ? 'none' : 'all 0.1s ease-out',
                                                 }}
-                                                title={`[순번 ${index + 1}] ${part.no || '-'} ${part.name || '미입력'} | 재고: ${fmtStock(stock)}`}
                                             >
-                                                {/* 잠금 */}
-                                                {isLocked && (
-                                                    <div className="absolute -top-3 -right-3 bg-slate-800 text-white rounded-full w-4 h-4 flex items-center justify-center text-[8px] shadow border border-white z-20">
-                                                        <i className="fa-solid fa-lock"></i>
-                                                    </div>
-                                                )}
-                                                {/* 순번 */}
-                                                <span style={{
-                                                    padding: `2px ${Math.round(part.fSize * 0.3)}px`,
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    fontWeight: 700,
-                                                    borderRight: '1px solid #000000',
-                                                    color: '#000000',
-                                                    backgroundColor: '#f3f4f6',
-                                                }}>{index + 1}</span>
-                                                {/* 품번 */}
-                                                <span style={{
-                                                    padding: `2px ${Math.round(part.fSize * 0.4)}px`,
-                                                    display: 'flex', alignItems: 'center',
-                                                    fontWeight: 700,
-                                                    fontFamily: 'monospace',
-                                                    color: part.no ? '#000000' : '#9ca3af',
-                                                    borderRight: '1px solid #000000',
-                                                }}>{part.no || '—'}</span>
-                                                {/* 품명 */}
-                                                <span style={{
-                                                    padding: `2px ${Math.round(part.fSize * 0.4)}px`,
-                                                    display: 'flex', alignItems: 'center',
-                                                    fontWeight: 600,
-                                                    color: part.name ? '#000000' : '#9ca3af',
-                                                    borderRight: '1px solid #000000',
-                                                }}>{part.name || '—'}</span>
-                                                {/* 재고 */}
-                                                <span style={{
-                                                    padding: `2px ${Math.round(part.fSize * 0.4)}px`,
-                                                    display: 'flex', alignItems: 'center',
-                                                    fontWeight: 900,
-                                                    fontFamily: 'monospace',
-                                                    letterSpacing: '-0.5px',
-                                                    backgroundColor: '#000000',
-                                                    color: stock > 0 ? '#ffffff' : '#f87171',
-                                                }}>{fmtStock(stock)}</span>
+                                                {/* SVG를 사용하여 폰트 클램핑 문제 해결 */}
+                                                <svg 
+                                                    width={part.fSize * 15} 
+                                                    height={part.fSize * 2.5} 
+                                                    viewBox={`0 0 ${part.fSize * 15} ${part.fSize * 2.5}`}
+                                                    style={{ overflow: 'visible', filter: isSelected ? 'drop-shadow(0 0 8px rgba(59,130,246,0.6))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
+                                                >
+                                                    <g transform={`translate(0, 0)`}>
+                                                        {/* 전체 테두리 */}
+                                                        <rect x="0" y="0" width={part.fSize * 15} height={part.fSize * 2} fill="#fff" stroke="#000" strokeWidth="1" />
+                                                        
+                                                        {/* 순번 칸 (회색) */}
+                                                        <rect x="0" y="0" width={part.fSize * 1.5} height={part.fSize * 2} fill="#f3f4f6" stroke="#000" strokeWidth="1" />
+                                                        <text x={part.fSize * 0.75} y={part.fSize * 1.4} textAnchor="middle" fontSize={part.fSize} fontWeight="bold" fill="#000">{index + 1}</text>
+                                                        
+                                                        {/* 품번 칸 */}
+                                                        <rect x={part.fSize * 1.5} y="0" width={part.fSize * 4} height={part.fSize * 2} fill="#fff" stroke="#000" strokeWidth="1" />
+                                                        <text x={part.fSize * 1.8} y={part.fSize * 1.4} fontSize={part.fSize} fontWeight="bold" fill={part.no ? "#000" : "#9ca3af"} fontFamily="monospace">
+                                                            {part.no || '—'}
+                                                        </text>
+                                                        
+                                                        {/* 품명 칸 */}
+                                                        <rect x={part.fSize * 5.5} y="0" width={part.fSize * 6.5} height={part.fSize * 2} fill="#fff" stroke="#000" strokeWidth="1" />
+                                                        <text x={part.fSize * 5.8} y={part.fSize * 1.4} fontSize={part.fSize} fontWeight="semibold" fill={part.name ? "#000" : "#9ca3af"}>
+                                                            {part.name || '—'}
+                                                        </text>
+                                                        
+                                                        {/* 재고 칸 (검정) */}
+                                                        <rect x={part.fSize * 12} y="0" width={part.fSize * 3} height={part.fSize * 2} fill="#000" />
+                                                        <text x={part.fSize * 13.5} y={part.fSize * 1.4} textAnchor="middle" fontSize={part.fSize} fontWeight="900" fill={stock > 0 ? "#fff" : "#f87171"} fontFamily="monospace">
+                                                            {fmtStock(stock)}
+                                                        </text>
+                                                        
+                                                        {/* 잠금 아이콘 (필요 시) */}
+                                                        {isLocked && (
+                                                            <circle cx={part.fSize * 15} cy="0" r={part.fSize * 0.5} fill="#1e293b" stroke="#fff" strokeWidth="1" />
+                                                        )}
+                                                    </g>
+                                                </svg>
                                             </div>
                                         );
                                     })}
