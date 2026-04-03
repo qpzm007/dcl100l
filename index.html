@@ -341,10 +341,14 @@
             const [pan, setPan] = useState({ x: 0, y: 0 });
             const [zoomLocked, setZoomLocked] = useState(false);
             const [isPanning, setIsPanning] = useState(false);
-            const panStart = useRef(null);
-            const lastPinchDist = useRef(null);
             const viewportRef = useRef(null);
             const containerRef = useRef(null);
+            const panStart = useRef(null);
+            const lastPinchDist = useRef(null);
+            const touchStartDist = useRef(null); // 추가: 초기 핀치 거리
+            const touchStartPct = useRef(null);  // 추가: 초기 줌 배율
+            const touchStartMid = useRef(null);  // 추가: 초기 핀치 중심점
+            const touchStartPan = useRef(null);  // 추가: 초기 팬 위치
             const assembliesRef = useRef(assemblies);
             assembliesRef.current = assemblies;
 
@@ -543,21 +547,25 @@
 
             // ─── 줌 헬퍼 (10% 단위) ───
             const STEP = 10;  // 10% 단계
-            const clampPct = (p) => Math.min(800, Math.max(10, Math.round(p / STEP) * STEP));
+            const clampPct = (p, smooth = false) => {
+                const val = Math.min(800, Math.max(10, p));
+                return smooth ? val : Math.round(val / STEP) * STEP;
+            };
 
             // 절대 퍼센트로 줌 변경 (pan 보정 포함)
-            const applyPct = (nextP, originX, originY) => {
+            const applyPct = (nextP, originX, originY, smooth = false) => {
                 setPct(prev => {
-                    const clamped = clampPct(nextP);
+                    const clamped = clampPct(nextP, smooth);
                     const ratio = clamped / prev;
+                    if (ratio === 1) return prev; // 변화 없음
                     const newPan = {
                         x: originX - (originX - pan.x) * ratio,
                         y: originY - (originY - pan.y) * ratio,
                     };
                     setPan(newPan);
                     
-                    // 조립체 데이터에 반영 (관리자만 저장)
-                    if (isAdmin) {
+                    // 조립체 데이터에 반영 (관리자만 저장, 부하 방지를 위해 smooth일 땐 스킵하거나 마우스업에서 처리)
+                    if (isAdmin && !smooth) {
                         setAssemblies(prevAsms => prevAsms.map(a => 
                             a.id === currentAsmId ? { ...a, zoom: clamped, panX: newPan.x, panY: newPan.y } : a
                         ));
@@ -602,31 +610,73 @@
                 }
             };
 
-            // 핀치 줌 (터치, 10% 단위로 스냅)
+            // ─── 터치 인터랙션 (이동 및 핀치 줌) ───
             const handleTouchStart = (e) => {
-                if (e.touches.length === 2) {
+                const rect = viewportRef.current.getBoundingClientRect();
+                if (e.touches.length === 1) {
+                    // 단일 터치: 패닝 시작
+                    setIsPanning(true);
+                    panStart.current = { 
+                        mx: e.touches[0].clientX, 
+                        my: e.touches[0].clientY, 
+                        px: pan.x, 
+                        py: pan.y 
+                    };
+                } else if (e.touches.length === 2) {
+                    // 두 손가락: 핀치 줌 시작
+                    setIsPanning(false); // 패닝 중단
                     const dx = e.touches[0].clientX - e.touches[1].clientX;
                     const dy = e.touches[0].clientY - e.touches[1].clientY;
-                    lastPinchDist.current = Math.hypot(dx, dy);
+                    const dist = Math.hypot(dx, dy);
+                    touchStartDist.current = dist;
+                    touchStartPct.current = pct;
+                    touchStartPan.current = { ...pan };
+                    touchStartMid.current = {
+                        x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left,
+                        y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+                    };
                 }
             };
+
             const handleTouchMove = (e) => {
-                if (e.touches.length === 2) {
+                if (e.touches.length === 1 && isPanning && panStart.current) {
+                    // 패닝 수행
+                    const dx = e.touches[0].clientX - panStart.current.mx;
+                    const dy = e.touches[0].clientY - panStart.current.my;
+                    setPan({ x: panStart.current.px + dx, y: panStart.current.py + dy });
+                } else if (e.touches.length === 2 && touchStartDist.current) {
+                    // 핀치 줌 수행
                     e.preventDefault();
                     const dx = e.touches[0].clientX - e.touches[1].clientX;
                     const dy = e.touches[0].clientY - e.touches[1].clientY;
                     const dist = Math.hypot(dx, dy);
-                    if (lastPinchDist.current) {
-                        const ratio = dist / lastPinchDist.current;
-                        const rect = viewportRef.current.getBoundingClientRect();
-                        const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-                        const my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-                        applyPct(pct * ratio, mx, my);
-                    }
-                    lastPinchDist.current = dist;
+                    const ratio = dist / touchStartDist.current;
+                    
+                    const rect = viewportRef.current.getBoundingClientRect();
+                    const currentMid = {
+                        x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left,
+                        y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+                    };
+                    
+                    // 줌 적용 (smooth=true 처리)
+                    const nextPct = touchStartPct.current * ratio;
+                    applyPct(nextPct, currentMid.x, currentMid.y, true);
                 }
             };
-            const handleTouchEnd = () => { lastPinchDist.current = null; };
+
+            const handleTouchEnd = () => { 
+                setIsPanning(false);
+                panStart.current = null;
+                touchStartDist.current = null;
+                touchStartPct.current = null;
+                
+                // 터치 종료 시 관리자라면 최종 위치 저장
+                if (isAdmin) {
+                    setAssemblies(prev => prev.map(a => 
+                        a.id === currentAsmId ? { ...a, zoom: pct, panX: pan.x, panY: pan.y } : a
+                    ));
+                }
+            };
 
             const handleToggleZoomLock = () => {
                 if (!isAdmin) return;
