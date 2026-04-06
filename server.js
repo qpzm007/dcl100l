@@ -64,6 +64,16 @@ app.put('/api/current', (req, res) => {
     res.json({ ok: true });
 });
 
+// [PUT] 전체 데이터 일괄 업데이트 (순서/계층 변경용)
+app.put('/api/data', (req, res) => {
+    const { assemblies, currentAsmId } = req.body;
+    const db = readDB();
+    if (assemblies) db.assemblies = assemblies;
+    if (currentAsmId) db.currentAsmId = currentAsmId;
+    writeDB(db);
+    res.json({ ok: true });
+});
+
 // [GET] 모든 조립체 조회
 app.get('/api/assemblies', (req, res) => {
     const db = readDB();

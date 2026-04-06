@@ -213,6 +213,17 @@
                     return { currentAsmId: null };
                 }
             },
+            saveAll: async (assemblies, currentAsmId) => {
+                if (isLocal) {
+                    await fetch('/api/data', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ assemblies, currentAsmId })
+                    });
+                } else {
+                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                }
+            },
             setCurrent: async (id) => {
                 if (isLocal) {
                     await fetch('/api/current', {
@@ -505,6 +516,39 @@
                 }
             };
 
+            const handleMoveAsm = async (id, type) => {
+                if (!isAdmin) return;
+                const idx = assemblies.findIndex(a => a.id === id);
+                if (idx === -1) return;
+                
+                let nextAsms = [...assemblies];
+                const asm = { ...nextAsms[idx] };
+
+                if (type === 'levelUp') {
+                    if (!asm.parentId) return;
+                    const parent = assemblies.find(a => a.id === asm.parentId);
+                    asm.parentId = parent ? parent.parentId : null;
+                    nextAsms[idx] = asm;
+                } else if (type === 'levelDown') {
+                    const siblings = assemblies.filter(a => a.parentId === asm.parentId);
+                    const sIdx = siblings.findIndex(a => a.id === id);
+                    if (sIdx <= 0) return;
+                    const prevSibling = siblings[sIdx - 1];
+                    asm.parentId = prevSibling.id;
+                    nextAsms[idx] = asm;
+                    setExpandedAsmIds(prev => new Set(prev).add(prevSibling.id));
+                } else if (type === 'orderUp') {
+                    if (idx <= 0) return;
+                    [nextAsms[idx - 1], nextAsms[idx]] = [nextAsms[idx], nextAsms[idx - 1]];
+                } else if (type === 'orderDown') {
+                    if (idx >= assemblies.length - 1) return;
+                    [nextAsms[idx], nextAsms[idx + 1]] = [nextAsms[idx + 1], nextAsms[idx]];
+                }
+
+                setAssemblies(nextAsms);
+                await API.saveAll(nextAsms, currentAsmId);
+            };
+
             // 재귀적 트리 렌더러
             const renderAssemblyTree = (parentId = null, level = 0) => {
                 const children = assemblies.filter(a => (a.parentId || null) === (parentId || null));
@@ -546,6 +590,34 @@
                                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {isAdmin && (
                                                 <>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleMoveAsm(asm.id, 'orderUp'); }}
+                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white border border-gray-200 hover:text-blue-600 shadow-sm"
+                                                        title="위로 이동"
+                                                    >
+                                                        <i className="fa-solid fa-arrow-up text-[10px]"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleMoveAsm(asm.id, 'orderDown'); }}
+                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white border border-gray-200 hover:text-blue-600 shadow-sm"
+                                                        title="아래로 이동"
+                                                    >
+                                                        <i className="fa-solid fa-arrow-down text-[10px]"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleMoveAsm(asm.id, 'levelUp'); }}
+                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white border border-gray-200 hover:text-orange-600 shadow-sm"
+                                                        title="단계 올리기 (내어쓰기)"
+                                                    >
+                                                        <i className="fa-solid fa-outdent text-[10px]"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleMoveAsm(asm.id, 'levelDown'); }}
+                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white border border-gray-200 hover:text-orange-600 shadow-sm"
+                                                        title="단계 내리기 (들여쓰기)"
+                                                    >
+                                                        <i className="fa-solid fa-indent text-[10px]"></i>
+                                                    </button>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleSubAsmAdd(asm.id); }}
                                                         className="w-6 h-6 flex items-center justify-center rounded bg-white border border-gray-200 hover:text-green-600 hover:border-green-200 shadow-sm"
