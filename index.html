@@ -236,8 +236,8 @@
 
         // index: 1-based 조립체 순번 (1번 → 1.png, 2번 → 2.png)
         const createDefaultAssembly = (name = "새 조립체", index = 1, parentId = null) => {
-            // 이미지 개수가 20개라고 가정하고 순환 (필요시 조정)
-            const imgIdx = ((index - 1) % 20) + 1;
+            // 이미지 개수를 100개라고 가정하고 순환 (필요시 조정)
+            const imgIdx = ((index - 1) % 100) + 1;
             return {
                 id: `asm_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                 name,
