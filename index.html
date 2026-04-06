@@ -477,7 +477,7 @@
                 setExpandedAsmIds(prev => new Set(prev).add(parentId));
                 
                 if (isAdmin) {
-                    await API.saveAssembly(newAsm);
+                    await API.addAssembly(newAsm);
                     await API.setCurrent(newAsm.id);
                 }
             };
