@@ -214,14 +214,15 @@
                 }
             },
             saveAll: async (assemblies, currentAsmId) => {
+                const data = JSON.parse(JSON.stringify({ assemblies, currentAsmId }));
                 if (isLocal) {
                     await fetch('/api/data', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ assemblies, currentAsmId })
+                        body: JSON.stringify(data)
                     });
                 } else {
-                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                    await db.collection('app').doc('state').set(data);
                 }
             },
             setCurrent: async (id) => {
@@ -525,7 +526,7 @@
                 if (type === 'levelUp') {
                     if (!asm.parentId) return;
                     const parent = assemblies.find(a => a.id === asm.parentId);
-                    asm.parentId = parent ? parent.parentId : null;
+                    asm.parentId = parent ? (parent.parentId || null) : null;
                     nextAsms[idx] = asm;
                 } else if (type === 'levelDown') {
                     const siblings = assemblies.filter(a => a.parentId === asm.parentId);
