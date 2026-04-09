@@ -723,9 +723,11 @@
                 const name = prompt("새로운 제품(과제) 이름을 입력하세요:");
                 if (!name || !name.trim()) return;
                 const newProd = createDefaultProduct(name.trim());
+                // 전체 조립체 수 기반으로 고유 이미지 인덱스 계산 → 겹치지 않도록
+                const nextImgIdx = assemblies.length + 1;
+                const defaultAsm = createDefaultAssembly("기본 조립체", nextImgIdx, null, newProd.id);
                 setProducts(prev => [...prev, newProd]);
                 setCurrentProductId(newProd.id);
-                const defaultAsm = createDefaultAssembly("기본 조립체", 1, null, newProd.id);
                 setAssemblies(prev => [...prev, defaultAsm]);
                 setCurrentAsmId(defaultAsm.id);
             };
@@ -1085,7 +1087,7 @@
                             <button onClick={handleLogout} className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm font-medium transition text-red-400">
                                 <i className="fa-solid fa-right-from-bracket"></i> 로그아웃
                             </button>
-                        </div>
+                            </div>
                         </div>
                     </header>
 
