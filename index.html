@@ -851,7 +851,7 @@
             // 패닝 (마우스)
             const handleVpMouseDown = (e) => {
                 if (e.button !== 0) return;
-                if (e.target.closest('[data-badge]')) return;
+                if (e.target.closest('[data-badge]') || e.target.closest('.popover-container')) return;
                 setIsPanning(true);
                 panStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
                 e.preventDefault();
@@ -877,6 +877,7 @@
 
             // ─── 터치 인터랙션 (이동 및 핀치 줌) ───
             const handleTouchStart = (e) => {
+                if (e.target.closest('.popover-container')) return;
                 const rect = viewportRef.current.getBoundingClientRect();
                 if (e.touches.length === 1) {
                     // 단일 터치: 패닝 시작
@@ -1002,9 +1003,12 @@
                                     <h3 className="font-bold text-white flex items-center gap-2 text-xs">
                                         <i className="fa-solid fa-sitemap text-blue-400"></i> 조립체 계층
                                     </h3>
-                                    <div className="flex gap-1">
+                                    <div className="flex gap-1 items-center">
                                         <button onClick={collapseAllAsms} className="px-1.5 py-0.5 bg-slate-700 hover:bg-slate-600 text-white text-[9px] rounded font-bold transition-colors">1단계</button>
                                         <button onClick={expandAllAsms} className="px-1.5 py-0.5 bg-slate-700 hover:bg-slate-600 text-white text-[9px] rounded font-bold transition-colors">전체</button>
+                                        <button onClick={() => setIsRightPanelOpen(false)} className="lg:hidden ml-1 px-2 py-0.5 bg-red-500 hover:bg-red-400 text-white text-[10px] rounded font-bold shadow-sm transition-colors flex items-center gap-1">
+                                            닫기 <i className="fa-solid fa-times"></i>
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="p-2 overflow-y-auto custom-scrollbar flex-grow bg-gray-50 min-h-[150px]">
@@ -1225,7 +1229,7 @@
                                     const pIdx = currentAsm.parts.findIndex(p => p.id === activePopoverPartId);
                                     return (
                                         <div 
-                                            className="absolute z-[200] bg-white border border-gray-300 shadow-xl rounded-lg p-3 text-sm flex flex-col gap-2 w-64 transform -translate-x-1/2 -translate-y-full"
+                                            className="popover-container absolute z-[200] bg-white border border-gray-300 shadow-xl rounded-lg p-3 text-sm flex flex-col gap-2 w-64 transform -translate-x-1/2 -translate-y-full"
                                             style={{ left: popoverPos.x, top: popoverPos.y - 12 }}
                                             onWheel={(e) => e.stopPropagation()} 
                                             onClick={(e) => e.stopPropagation()}
@@ -1298,11 +1302,16 @@
                                     <h3 className="font-bold text-gray-800 flex items-center gap-2 text-xs">
                                         <i className="fa-solid fa-sliders text-blue-600"></i> 개별 크기 설정
                                     </h3>
-                                    {selectedPart && (
-                                        <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-1 rounded-full font-bold">
-                                            순번 {currentAsm.parts.findIndex(p => p.id === selectedPart.id) + 1} 선택됨
-                                        </span>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {selectedPart && (
+                                            <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-1 rounded-full font-bold">
+                                                순번 {currentAsm.parts.findIndex(p => p.id === selectedPart.id) + 1} 선택됨
+                                            </span>
+                                        )}
+                                        <button onClick={() => setIsRightPanelOpen(false)} className="lg:hidden px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-[10px] rounded font-bold shadow-sm flex items-center gap-1 transition">
+                                            <i className="fa-solid fa-times"></i>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="p-4 h-auto flex flex-col justify-center min-h-[120px]">
                                     {selectedPart ? (
