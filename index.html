@@ -242,6 +242,7 @@
         const createDefaultPart = () => ({
             id: `part_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             no: '', name: '', stock: 0,
+            reqQty: 1, manufacturer: '', expectedDate: '', remarks: '',
             x: 50, y: 50, size: 32, fSize: 15, isLocked: false,
             wNo: 4, wName: 13, wStock: 3 // 기본 너비 배율
         });
@@ -255,6 +256,7 @@
                 name,
                 parentId, // 부모 ID (null이면 최상위)
                 imageUrl: `images/${imgIdx}.png`,
+                targetQty: 100,
                 zoom: 100, panX: 0, panY: 0, zoomLocked: false,
                 parts: [createDefaultPart()]
             };
@@ -372,6 +374,10 @@
             const [pan, setPan] = useState({ x: 0, y: 0 });
             const [zoomLocked, setZoomLocked] = useState(false);
             const [isPanning, setIsPanning] = useState(false);
+            const [isSupplyMode, setIsSupplyMode] = useState(false); // 제작처 모드
+            const [activePopoverPartId, setActivePopoverPartId] = useState(null); // 활성화된 말풍선 팝업 ID
+            const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 }); // 말풍선 절대 위치
+
             const viewportRef = useRef(null);
             const containerRef = useRef(null);
             const panStart = useRef(null);
@@ -460,6 +466,11 @@
                 window.addEventListener('resize', updateZoom);
                 return () => window.removeEventListener('resize', updateZoom);
             }, [currentAsmId, isLoaded]);
+
+            // 도면 화면 이동/확대 또는 조립체 변경 시 팝업 닫기
+            useEffect(() => {
+                setActivePopoverPartId(null);
+            }, [pan, pct, currentAsmId]);
 
             // 계층형 관리 함수들
             const toggleAsmExpand = (id) => {
@@ -748,6 +759,22 @@
 
             // ─── 드래그 엔진 (Pointer Events) ───
             const handlePointerDown = (e, part) => {
+                if (isSupplyMode) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const vpRect = viewportRef.current.getBoundingClientRect();
+                    // 뷰포트 기준 상대 위치 계산 (말풍선을 뱃지 중앙상단에 띄우기 위해)
+                    setPopoverPos({ 
+                        x: rect.left - vpRect.left + (rect.width / 2), 
+                        y: rect.top - vpRect.top
+                    });
+                    setActivePopoverPartId(part.id);
+                    setSelectedPartId(part.id);
+                    return;
+                }
+                
+                setActivePopoverPartId(null); // 일반 모드 시 팝업 닫기
                 setSelectedPartId(part.id);
                 if (part.isLocked || !isAdmin) return;
                 e.preventDefault();
@@ -1031,6 +1058,14 @@
                                 </div>
                                 <div className="flex gap-2">
                                     <button
+                                        onClick={() => { setIsSupplyMode(!isSupplyMode); setActivePopoverPartId(null); }}
+                                        className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isSupplyMode ? 'bg-orange-600 text-white border-orange-700' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}
+                                        title={isSupplyMode ? '제작처 모드 끄기' : '제작처 보기 및 입력 모드 시작'}
+                                    >
+                                        <i className={`fa-solid fa-comment-dots`}></i>
+                                        {isSupplyMode ? '제작처 보기 ON' : '제작처 보기'}
+                                    </button>
+                                    <button
                                         onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
                                         className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isRightPanelOpen ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}
                                         title={isRightPanelOpen ? '탐색기/리스트 닫기' : '탐색기/리스트 열기'}
@@ -1113,6 +1148,15 @@
                                                     const wm = (part.wName || 13);
                                                     const ws = (part.wStock || 3);
                                                     const totalW = (2 + wn + wm + ws) * fs;
+                                                    
+                                                    // 재고 신호등 색상 로직
+                                                    const totalReq = (currentAsm.targetQty || 100) * (part.reqQty || 1);
+                                                    let stockColor = '#000'; 
+                                                    let stockTextColor = '#fff';
+                                                    if (stock === 0) { stockColor = '#ef4444'; }
+                                                    else if (stock > 0 && stock < totalReq) { stockColor = '#f59e0b'; }
+                                                    else if (stock >= totalReq) { stockColor = '#10b981'; }
+
                                                     return (
                                                         <svg 
                                                             width={totalW} 
@@ -1152,10 +1196,10 @@
                                                                     </div>
                                                                 </foreignObject>
                                                                 
-                                                                {/* 재고 칸 (검정) */}
-                                                                <rect x={fs * (2 + wn + wm)} y="0" width={fs * ws} height={fs * 2.2} fill="#000" />
+                                                                {/* 재고 칸 (신호등 색상 반영) */}
+                                                                <rect x={fs * (2 + wn + wm)} y="0" width={fs * ws} height={fs * 2.2} fill={stockColor} />
                                                                 <foreignObject x={fs * (2 + wn + wm)} y="0" width={fs * ws} height={fs * 2.2}>
-                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs + 'px', fontWeight: '900', lineHeight: 'normal', color: stock > 0 ? '#fff' : '#f87171', fontFamily: 'monospace' }}>
+                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: fs + 'px', fontWeight: '900', lineHeight: 'normal', color: stockTextColor, fontFamily: 'monospace' }}>
                                                                         {fmtStock(stock)}
                                                                     </div>
                                                                 </foreignObject>
@@ -1173,6 +1217,45 @@
                                     })}
                                     </div>
                                 </div>
+
+                                {/* 말풍선 팝업 (Supply Info) */}
+                                {isSupplyMode && activePopoverPartId && (() => {
+                                    const part = currentAsm.parts.find(p => p.id === activePopoverPartId);
+                                    if (!part) return null;
+                                    const pIdx = currentAsm.parts.findIndex(p => p.id === activePopoverPartId);
+                                    return (
+                                        <div 
+                                            className="absolute z-[200] bg-white border border-gray-300 shadow-xl rounded-lg p-3 text-sm flex flex-col gap-2 w-64 transform -translate-x-1/2 -translate-y-full"
+                                            style={{ left: popoverPos.x, top: popoverPos.y - 12 }}
+                                            onWheel={(e) => e.stopPropagation()} 
+                                            onClick={(e) => e.stopPropagation()}
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                        >
+                                            {/* 말풍선 꼬리 */}
+                                            <div className="absolute left-1/2 bottom-[-7px] w-3 h-3 bg-white border-b border-r border-gray-300 transform -translate-x-1/2 rotate-45"></div>
+                                            
+                                            <div className="flex justify-between items-start border-b pb-1 mb-1">
+                                                <div className="font-bold text-blue-700 truncate w-full flex gap-1">
+                                                    <span className="text-gray-500">[{pIdx+1}]</span>
+                                                    <span className="truncate">{part.name||'품명없음'}</span>
+                                                </div>
+                                                <button onClick={() => setActivePopoverPartId(null)} className="text-gray-400 hover:text-red-500 ml-2 shadow-sm"><i className="fa-solid fa-times"></i></button>
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-[10px] text-gray-500 font-bold"><i className="fa-solid fa-industry"></i> 제작업체</label>
+                                                {isAdmin ? <input type="text" className="border rounded p-1 text-xs outline-none focus:ring-1 focus:border-blue-400" value={part.manufacturer||''} onChange={(e) => updatePart(part.id, 'manufacturer', e.target.value)} placeholder="제작업체 이름..." /> : <div className="text-xs font-semibold py-1">{part.manufacturer||'-'}</div>}
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-[10px] text-gray-500 font-bold"><i className="fa-solid fa-calendar-alt"></i> 입고예정일</label>
+                                                {isAdmin ? <input type="date" className="border rounded p-1 text-xs outline-none focus:ring-1 focus:border-blue-400" value={part.expectedDate||''} onChange={(e) => updatePart(part.id, 'expectedDate', e.target.value)} /> : <div className="text-xs font-semibold py-1">{part.expectedDate||'-'}</div>}
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-[10px] text-gray-500 font-bold"><i className="fa-solid fa-clipboard-list"></i> 비고</label>
+                                                {isAdmin ? <textarea className="border rounded p-1 text-xs outline-none focus:ring-1 focus:border-blue-400 resize-none h-16" value={part.remarks||''} onChange={(e) => updatePart(part.id, 'remarks', e.target.value)} placeholder="특이사항 메모..."></textarea> : <div className="text-xs whitespace-pre-wrap py-1">{part.remarks||'-'}</div>}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                                 </div>
                                 {/* 줌 컨트롤 바 - 관리자만 보임 - viewport의 형제로 위치 */}
                                 {isAdmin && (
@@ -1284,10 +1367,32 @@
                             {/* 파트 테이블 */}
                             <div className="bg-white rounded-xl shadow border border-gray-200 flex flex-col flex-grow overflow-hidden min-h-[400px]">
                                 <div className="bg-slate-800 text-white p-3 flex justify-between items-center">
-                                    <h2 className="text-lg font-bold flex items-center gap-2">
-                                        <i className="fa-solid fa-list-check"></i> 파트 리스트 (수기 입력)
-                                        <span className="text-xs font-normal text-slate-400 ml-1">총 {currentAsm.parts.length}개</span>
-                                    </h2>
+                                    <div className="flex flex-col gap-1">
+                                        <h2 className="text-lg font-bold flex items-center gap-2">
+                                            <i className="fa-solid fa-list-check"></i> 파트 리스트 (수기 입력)
+                                            <span className="text-xs font-normal text-slate-400 ml-1">총 {currentAsm.parts.length}개</span>
+                                        </h2>
+                                        <div className="flex items-center gap-2 text-sm mt-1">
+                                            <span className="text-emerald-300 font-semibold text-xs border border-emerald-500/50 bg-emerald-900/30 px-2 py-0.5 rounded">
+                                                조립체 목표 생산량:
+                                            </span>
+                                            {isAdmin ? (
+                                                <div className="flex items-center gap-1">
+                                                    <input 
+                                                        type="number" min="1" 
+                                                        className="w-16 text-xs px-1 py-0.5 text-black rounded outline-none font-bold" 
+                                                        value={currentAsm.targetQty || 100}
+                                                        onChange={(e) => {
+                                                            const val = Math.max(1, parseInt(e.target.value)||1);
+                                                            setAssemblies(prev => prev.map(a => a.id === currentAsmId ? { ...a, targetQty: val } : a));
+                                                        }}
+                                                    /> <span className="text-xs text-gray-300">대</span>
+                                                </div>
+                                            ) : (
+                                                <span className="font-bold text-white">{currentAsm.targetQty || 100} 대</span>
+                                            )}
+                                        </div>
+                                    </div>
                                     <button
                                         onClick={() => setFullscreenPanel(fullscreenPanel === 'right' ? null : 'right')}
                                         className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-sm transition flex items-center gap-1 font-medium border border-slate-500"
@@ -1300,84 +1405,87 @@
                                     <table className="w-full text-left border-collapse min-w-[500px]">
                                         <thead className="bg-slate-50 sticky top-0 shadow-sm z-10 border-b">
                                             <tr>
-                                                <th className="p-2 w-12 text-center text-xs font-semibold text-gray-500">순번</th>
-                                                <th className="p-2 w-1/4 text-xs font-semibold text-gray-500">품번</th>
-                                                <th className="p-2 w-auto text-xs font-semibold text-gray-500">품명</th>
-                                                {isAdmin && <th className="p-2 w-24 text-center text-xs font-semibold text-gray-500">배각 가로폭(No/Nm/St)</th>}
-                                                <th className="p-2 w-20 text-center text-xs font-semibold text-gray-500">재고</th>
-                                                <th className="p-2 w-12 text-center text-xs font-semibold text-gray-500">삭제</th>
+                                                <th className="p-2 w-12 text-center text-xs font-semibold text-gray-500 border-r">순번</th>
+                                                <th className="p-2 w-auto text-xs font-semibold text-gray-500" colSpan="2">품번 / 품명</th>
+                                                {isAdmin && <th className="p-2 w-20 text-center text-xs font-semibold text-gray-500">도면 폭</th>}
+                                                <th className="p-2 w-36 text-center text-xs font-semibold text-gray-500">수량 현황</th>
+                                                <th className="p-2 w-10 text-center text-xs font-semibold text-gray-500 border-l">삭제</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
-                                            {currentAsm.parts.map((part, index) => (
-                                                <tr
-                                                    key={part.id}
-                                                    className={`border-b transition-colors cursor-pointer
-                                                        ${selectedPartId === part.id ? 'bg-blue-50' : 'hover:bg-slate-50'}
-                                                    `}
-                                                    onClick={() => setSelectedPartId(part.id)}
-                                                >
-                                                    <td className="p-2 text-center">
-                                                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold
-                                                            ${selectedPartId === part.id ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}
-                                                        `}>
-                                                            {index + 1}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input type="text" placeholder="품번 입력"
-                                                            value={part.no}
-                                                            onChange={(e) => updatePart(part.id, 'no', e.target.value)}
-                                                            className="editable-cell font-mono text-sm disabled:bg-transparent disabled:border-none"
-                                                            disabled={!isAdmin}
-                                                        />
-                                                    </td>
-                                                    <td className="p-2">
-                                                        <input type="text" placeholder="품명 입력"
-                                                            value={part.name}
-                                                            onChange={(e) => updatePart(part.id, 'name', e.target.value)}
-                                                            className="editable-cell text-sm font-medium text-gray-800 disabled:bg-transparent disabled:border-none"
-                                                            disabled={!isAdmin}
-                                                        />
-                                                    </td>
-                                                    {isAdmin && (
-                                                        <td className="p-2">
-                                                            <div className="flex items-center gap-1 justify-center">
-                                                                <input type="number" step="0.1" value={part.wNo || 4} onChange={(e) => updatePart(part.id, 'wNo', parseFloat(e.target.value))} className="w-8 text-[10px] p-0.5 border rounded text-center" title="품번 폭" />
-                                                                <input type="number" step="0.1" value={part.wName || 13} onChange={(e) => updatePart(part.id, 'wName', parseFloat(e.target.value))} className="w-8 text-[10px] p-0.5 border rounded text-center" title="품명 폭" />
-                                                                <input type="number" step="0.1" value={part.wStock || 3} onChange={(e) => updatePart(part.id, 'wStock', parseFloat(e.target.value))} className="w-8 text-[10px] p-0.5 border rounded text-center" title="재고 폭" />
+                                        {currentAsm.parts.map((part, index) => {
+                                            const totalReq = (currentAsm.targetQty || 100) * (part.reqQty || 1);
+                                            const stock = parseInt(part.stock) || 0;
+                                            let statusText = '입고 전'; let statusColor = 'text-red-500 bg-red-50 border-red-200';
+                                            if (stock > 0 && stock < totalReq) { statusText = '입고 중'; statusColor = 'text-amber-600 bg-amber-50 border-amber-200'; }
+                                            else if (stock >= totalReq) { statusText = '입고 완료'; statusColor = 'text-emerald-600 bg-emerald-50 border-emerald-200'; }
+
+                                            return (
+                                                <tbody key={part.id} className={`border-b-2 transition-colors cursor-pointer ${selectedPartId === part.id ? 'bg-blue-50/50' : 'hover:bg-slate-50/50'}`} onClick={() => setSelectedPartId(part.id)}>
+                                                    
+                                                    {/* 첫 번째 줄: 품번, 품명 */}
+                                                    <tr>
+                                                        <td className="p-2 text-center border-r" rowSpan="2">
+                                                            <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${selectedPartId === part.id ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                                                                {index + 1}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-2 border-b border-gray-100" colSpan="2">
+                                                            <div className="flex gap-2 w-full">
+                                                                <input type="text" placeholder="품번" value={part.no} onChange={(e) => updatePart(part.id, 'no', e.target.value)} className="w-1/3 editable-cell font-mono text-[11px] font-bold disabled:bg-transparent disabled:border-none focus:ring-1" disabled={!isAdmin} />
+                                                                <input type="text" placeholder="품명" value={part.name} onChange={(e) => updatePart(part.id, 'name', e.target.value)} className="w-2/3 editable-cell text-sm font-bold text-gray-800 disabled:bg-transparent disabled:border-none focus:ring-1" disabled={!isAdmin} />
                                                             </div>
                                                         </td>
-                                                    )}
-                                                    <td className="p-2 text-center">
-                                                        <div className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                                            <input type="number" min="0" 
-                                                                value={part.stock}
-                                                                onChange={(e) => updatePart(part.id, 'stock', e.target.value)}
-                                                                className="w-20 text-center border border-gray-300 rounded p-1 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-transparent disabled:border-none disabled:text-slate-900"
-                                                                disabled={!isAdmin}
-                                                            />
-                                                            <span className={`text-[10px] font-mono font-semibold ${parseInt(part.stock)||0 > 0 ? 'text-blue-600' : 'text-red-500'}`}>
-                                                                {fmtStock(part.stock)}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-2 text-center">
                                                         {isAdmin && (
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleDeletePart(part.id); }}
-                                                                className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition"
-                                                                title="부품 삭제"
-                                                            >
-                                                                <i className="fa-solid fa-xmark text-lg"></i>
-                                                            </button>
+                                                            <td className="p-1 px-2 text-center border-b border-gray-100 bg-white" rowSpan="2">
+                                                                <div className="flex flex-col gap-1 items-center justify-center h-full">
+                                                                    <div className="text-[9px] text-gray-400 leading-none">품번/명/수량</div>
+                                                                    <div className="flex flex-col gap-0.5 justify-center">
+                                                                        <input type="number" step="0.1" value={part.wNo || 4} onChange={(e) => updatePart(part.id, 'wNo', parseFloat(e.target.value))} className="w-9 text-[10px] p-0.5 border rounded text-center bg-gray-50" />
+                                                                        <input type="number" step="0.1" value={part.wName || 13} onChange={(e) => updatePart(part.id, 'wName', parseFloat(e.target.value))} className="w-9 text-[10px] p-0.5 border rounded text-center bg-gray-50" />
+                                                                        <input type="number" step="0.1" value={part.wStock || 3} onChange={(e) => updatePart(part.id, 'wStock', parseFloat(e.target.value))} className="w-9 text-[10px] p-0.5 border rounded text-center bg-gray-50" />
+                                                                    </div>
+                                                                </div>
+                                                            </td>
                                                         )}
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                                        <td className="p-2 border-b border-gray-100 bg-gray-50/50 text-right">
+                                                            <div className="flex justify-between items-center w-full">
+                                                                <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">소요량:</span>
+                                                                <div className="flex items-center gap-1 justify-end">
+                                                                    {isAdmin ? <input type="number" min="1" value={part.reqQty || 1} onChange={(e)=>updatePart(part.id, 'reqQty', parseInt(e.target.value)||1)} className="w-12 text-center border border-gray-300 p-0.5 text-xs font-bold rounded focus:ring-1" /> : <span className="text-xs font-bold px-1">{part.reqQty || 1}</span>}
+                                                                    <span className="text-[10px] text-gray-400">ea</span>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-2 text-center border-l" rowSpan="2">
+                                                            {isAdmin && (
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDeletePart(part.id); }} className="text-gray-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition"><i className="fa-solid fa-trash text-sm"></i></button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                    
+                                                    {/* 두 번째 줄: 재고, 상태 */}
+                                                    <tr>
+                                                        <td className="p-2 pb-3 mb-1" colSpan="2">
+                                                            <div className="flex gap-2 items-center text-xs pl-2">
+                                                                <i className="fa-solid fa-arrow-turn-up rotate-90 text-gray-300"></i>
+                                                                <span className="font-semibold text-gray-600 whitespace-nowrap text-[11px]">입고 상태:</span>
+                                                                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold whitespace-nowrap ${statusColor}`}>{statusText}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-2 pb-3 mb-1 bg-gray-50/50">
+                                                            <div className="flex justify-between items-center w-full">
+                                                                <span className="text-[10px] font-bold text-blue-600 whitespace-nowrap">현재고:</span>
+                                                                {isAdmin ? <input type="number" min="0" value={part.stock} onChange={(e)=>updatePart(part.id, 'stock', parseInt(e.target.value)||0)} className="w-14 text-center border border-blue-400 bg-blue-50 text-blue-800 p-0.5 text-xs font-black rounded outline-none focus:ring-2 focus:ring-blue-500" /> : <span className="text-xs font-black text-blue-700 px-1">{fmtStock(part.stock)}</span>}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            );
+                                        })}
+                                        <tbody>
                                             {isAdmin && (
                                                 <tr>
-                                                    <td colSpan="5" className="p-2">
+                                                    <td colSpan={isAdmin ? '6' : '5'} className="p-3 bg-white">
                                                         <button
                                                             onClick={handleAddPart}
                                                             className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 font-medium hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition flex items-center justify-center gap-2"
