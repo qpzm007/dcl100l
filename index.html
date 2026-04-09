@@ -651,6 +651,20 @@
                 );
             };
 
+            useEffect(() => {
+                const el = viewportRef.current;
+                if (!el) return;
+                const onNativeWheel = (e) => {
+                    e.preventDefault(); // 기본(네이티브) 스크롤 동작 방지
+                    const rect = el.getBoundingClientRect();
+                    const ox = e.clientX - rect.left;
+                    const oy = e.clientY - rect.top;
+                    applyPct(pct + (e.deltaY < 0 ? STEP : -STEP), ox, oy);
+                };
+                el.addEventListener('wheel', onNativeWheel, { passive: false });
+                return () => el.removeEventListener('wheel', onNativeWheel);
+            }, [pct, pan, currentAsmId, isAdmin]);
+
             if (!userRole) return <Login onLogin={handleLogin} />;
 
             if (!isLoaded) return (
@@ -917,20 +931,6 @@
             const zoomIn    = () => applyPct(pct + STEP, cx(), cy());
             const zoomOut   = () => applyPct(pct - STEP, cx(), cy());
             const zoomReset = () => { setPct(100); setPan({ x:0, y:0 }); };
-
-            useEffect(() => {
-                const el = viewportRef.current;
-                if (!el) return;
-                const onNativeWheel = (e) => {
-                    e.preventDefault(); // 기본(네이티브) 스크롤 동작 방지
-                    const rect = el.getBoundingClientRect();
-                    const ox = e.clientX - rect.left;
-                    const oy = e.clientY - rect.top;
-                    applyPct(pct + (e.deltaY < 0 ? STEP : -STEP), ox, oy);
-                };
-                el.addEventListener('wheel', onNativeWheel, { passive: false });
-                return () => el.removeEventListener('wheel', onNativeWheel);
-            }, [pct, pan, currentAsmId, isAdmin]);
 
             return (
                 <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#f3f4f6]">
