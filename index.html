@@ -159,82 +159,65 @@
                     return res.json();
                 } else {
                     const doc = await db.collection('app').doc('state').get();
-                    return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null };
+                    return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null, products: [], currentProductId: null };
                 }
             },
             saveAssembly: async (asm) => {
                 if (isLocal) {
-                    await fetch(`/api/assemblies/${asm.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(asm)
-                    });
+                    await fetch(`/api/assemblies/${asm.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(asm) });
                 } else {
                     const doc = await db.collection('app').doc('state').get();
                     if (doc.exists) {
-                        let { assemblies, currentAsmId } = doc.data();
+                        let { assemblies, currentAsmId, products, currentProductId } = doc.data();
                         assemblies = assemblies.map(a => a.id === asm.id ? asm : a);
-                        await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                        await db.collection('app').doc('state').set({ assemblies, currentAsmId, products, currentProductId });
                     }
                 }
             },
             addAssembly: async (asm) => {
                 if (isLocal) {
-                    await fetch('/api/assemblies', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(asm)
-                    });
+                    await fetch('/api/assemblies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(asm) });
                 } else {
                     const doc = await db.collection('app').doc('state').get();
-                    let assemblies = [], currentAsmId = asm.id;
+                    let assemblies = [], currentAsmId = asm.id, products = [{id:'prod_default', name:'열영상대구경'}], currentProductId = 'prod_default';
                     if (doc.exists) {
-                        ({ assemblies, currentAsmId } = doc.data());
-                        assemblies.push(asm);
-                    } else {
-                        assemblies = [asm];
+                        const d = doc.data();
+                        assemblies = d.assemblies || [];
+                        products = d.products || products;
+                        currentProductId = d.currentProductId || currentProductId;
                     }
-                    await db.collection('app').doc('state').set({ assemblies, currentAsmId });
+                    assemblies.push(asm);
+                    await db.collection('app').doc('state').set({ assemblies, currentAsmId: asm.id, products, currentProductId });
                 }
             },
             deleteAssembly: async (id) => {
                 if (isLocal) {
-                    const res = await fetch(`/api/assemblies/${id}`, { method: 'DELETE' });
-                    return res.json();
+                    const res = await fetch(`/api/assemblies/${id}`, { method: 'DELETE' }); return res.json();
                 } else {
                     const doc = await db.collection('app').doc('state').get();
                     if (doc.exists) {
-                        let { assemblies, currentAsmId } = doc.data();
+                        let { assemblies, currentAsmId, products, currentProductId } = doc.data();
                         const filtered = assemblies.filter(a => a.id !== id);
-                        const newId = currentAsmId === id ? (filtered[0]?.id || null) : currentAsmId;
-                        await db.collection('app').doc('state').set({ assemblies: filtered, currentAsmId: newId });
+                        const newId = currentAsmId === id ? (filtered.filter(a => a.productId === currentProductId)[0]?.id || null) : currentAsmId;
+                        await db.collection('app').doc('state').set({ assemblies: filtered, currentAsmId: newId, products, currentProductId });
                         return { currentAsmId: newId };
                     }
                     return { currentAsmId: null };
                 }
             },
-            saveAll: async (assemblies, currentAsmId) => {
-                const data = JSON.parse(JSON.stringify({ assemblies, currentAsmId }));
+            saveAll: async (assemblies, currentAsmId, products, currentProductId) => {
+                const data = JSON.parse(JSON.stringify({ assemblies, currentAsmId, products, currentProductId }));
                 if (isLocal) {
-                    await fetch('/api/data', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data)
-                    });
+                    await fetch('/api/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
                 } else {
                     await db.collection('app').doc('state').set(data);
                 }
             },
             setCurrent: async (id) => {
-                if (isLocal) {
-                    await fetch('/api/current', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ currentAsmId: id })
-                    });
-                } else {
-                    await db.collection('app').doc('state').update({ currentAsmId: id });
-                }
+                if (!isLocal) await db.collection('app').doc('state').update({ currentAsmId: id });
+            },
+            setCurrentProduct: async (id) => {
+                if (!isLocal) await db.collection('app').doc('state').update({ currentProductId: id });
             }
         };
 
@@ -247,12 +230,18 @@
             wNo: 4, wName: 13, wStock: 3 // 기본 너비 배율
         });
 
+        const createDefaultProduct = (name = "새 제품") => ({
+            id: `prod_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            name
+        });
+
         // index: 1-based 조립체 순번 (1번 → 1.png, 2번 → 2.png)
-        const createDefaultAssembly = (name = "새 조립체", index = 1, parentId = null) => {
+        const createDefaultAssembly = (name = "새 조립체", index = 1, parentId = null, productId = null) => {
             // 이미지 개수를 100개라고 가정하고 순환 (필요시 조정)
             const imgIdx = ((index - 1) % 100) + 1;
             return {
                 id: `asm_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                productId, // 추가됨: 어떤 제품에 속하는지
                 name,
                 parentId, // 부모 ID (null이면 최상위)
                 imageUrl: `images/${imgIdx}.png`,
@@ -357,6 +346,8 @@
         // ─────────────────────────── 앱 컴포넌트 ───────────────────────────
         function App() {
             const [userRole, setUserRole] = useState(() => localStorage.getItem('userRole'));
+            const [products, setProducts] = useState([]);
+            const [currentProductId, setCurrentProductId] = useState(null);
             const [assemblies, setAssemblies] = useState([]);
             const [currentAsmId, setCurrentAsmId] = useState(null);
             const [selectedPartId, setSelectedPartId] = useState(null);
@@ -389,6 +380,8 @@
             const assembliesRef = useRef(assemblies);
             assembliesRef.current = assemblies;
 
+            const filteredAssemblies = assemblies.filter(a => a.productId === currentProductId);
+
             const isAdmin = userRole === 'admin';
 
             const handleLogin = (role) => {
@@ -407,15 +400,38 @@
                 setIsLoaded(false);
                 API.getData()
                     .then(data => {
-                        const asms = (data.assemblies && data.assemblies.length > 0)
-                            ? data.assemblies
-                            : [createDefaultAssembly("기본 조립체")];
+                        let prods = data.products || [];
+                        let curProdId = data.currentProductId;
+                        let asms = data.assemblies || [];
+                        let curAsmId = data.currentAsmId;
+
+                        // 마이그레이션: 기존 데이터에 products가 없을 경우
+                        if (prods.length === 0) {
+                            const defProd = createDefaultProduct("열영상대구경");
+                            defProd.id = 'prod_default';
+                            prods = [defProd];
+                            curProdId = defProd.id;
+                            
+                            if (asms.length > 0) {
+                                // 기존 모든 조립체에 기본 productId 할당
+                                asms = asms.map(a => ({ ...a, productId: curProdId }));
+                            } else {
+                                asms = [createDefaultAssembly("기본 조립체", 1, null, curProdId)];
+                            }
+                            curAsmId = asms[0].id;
+                        }
+
+                        setProducts(prods);
+                        setCurrentProductId(curProdId);
                         setAssemblies(asms);
-                        setCurrentAsmId(data.currentAsmId || asms[0].id);
+                        setCurrentAsmId(curAsmId || asms.filter(a => a.productId === curProdId)[0]?.id);
                     })
                     .catch(e => {
                         console.error('데이터 로드 실패', e);
-                        const initial = createDefaultAssembly();
+                        const prod = createDefaultProduct("열영상대구경");
+                        const initial = createDefaultAssembly("새 조립체", 1, null, prod.id);
+                        setProducts([prod]);
+                        setCurrentProductId(prod.id);
                         setAssemblies([initial]);
                         setCurrentAsmId(initial.id);
                     })
@@ -423,13 +439,13 @@
             }, [userRole]);
 
             // 자동 저장 (debounce 500ms)
-            const autoSave = useCallback((asms, curId) => {
+            const autoSave = useCallback((asms, curAsmId, prods, curProdId) => {
                 if (!isAdmin) return; // 사용자 권한은 저장 불가
                 clearTimeout(saveTimer);
                 saveTimer = setTimeout(async () => {
                     try {
                         if (asms.length > 0) {
-                            await API.saveAll(asms, curId);
+                            await API.saveAll(asms, curAsmId, prods, curProdId);
                             showSaveIndicator('저장됨 ✓');
                         }
                     } catch(e) {
@@ -438,12 +454,12 @@
                 }, 500);
             }, [isAdmin]);
 
-            // 조립체 변경 시 자동 저장 트리거
+            // 변경 시 자동 저장 트리거
             useEffect(() => {
-                if (isLoaded && assemblies.length > 0 && currentAsmId) {
-                    autoSave(assemblies, currentAsmId);
+                if (isLoaded && assemblies.length > 0 && currentAsmId && products.length > 0) {
+                    autoSave(assemblies, currentAsmId, products, currentProductId);
                 }
-            }, [assemblies, currentAsmId, isLoaded]);
+            }, [assemblies, currentAsmId, products, currentProductId, isLoaded]);
 
             // 조립체 전환 또는 화면 크기 변경 시 해당 조립체의 저장된 줌/팬 적용
             useEffect(() => {
@@ -483,7 +499,7 @@
             };
 
             const expandAllAsms = () => {
-                setExpandedAsmIds(new Set(assemblies.map(a => a.id)));
+                setExpandedAsmIds(new Set(filteredAssemblies.map(a => a.id)));
             };
 
             const collapseAllAsms = () => {
@@ -498,7 +514,7 @@
 
                 // 전체 개수를 기반으로 고유 이미지 인덱스 생성
                 const nextImgIdx = assemblies.length + 1;
-                const newAsm = createDefaultAssembly(newName, nextImgIdx, parentId);
+                const newAsm = createDefaultAssembly(newName, nextImgIdx, parentId, currentProductId);
                 const updated = [...assemblies, newAsm];
                 setAssemblies(updated);
                 setCurrentAsmId(newAsm.id);
@@ -571,13 +587,13 @@
 
             // 재귀적 트리 렌더러
             const renderAssemblyTree = (parentId = null, level = 0) => {
-                const children = assemblies.filter(a => (a.parentId || null) === (parentId || null));
+                const children = filteredAssemblies.filter(a => (a.parentId || null) === (parentId || null));
                 if (children.length === 0 && level > 0) return null;
 
                 return (
                     <div className={level > 0 ? "ml-4 border-l border-gray-200" : ""}>
                         {children.map(asm => {
-                            const hasChildren = assemblies.some(a => a.parentId === asm.id);
+                            const hasChildren = filteredAssemblies.some(a => a.parentId === asm.id);
                             const isExpanded = expandedAsmIds.has(asm.id);
                             const isSelected = currentAsmId === asm.id;
 
@@ -687,19 +703,65 @@
                 </div>
             );
 
-            const currentAsm = assemblies.find(a => a.id === currentAsmId) || assemblies[0] || createDefaultAssembly();
+            const currentAsm = assemblies.find(a => a.id === currentAsmId) || filteredAssemblies[0] || createDefaultAssembly("임시", 1, null, currentProductId);
             const selectedPart = currentAsm.parts.find(p => p.id === selectedPartId) || null;
 
             // ─── 조립체 핸들러 ───
             const handleAddAssembly = async () => {
                 if (!isAdmin) return;
                 const nextIdx = assemblies.length + 1;  // 1-based 순번
-                const newAsm = createDefaultAssembly(`조립체 ${nextIdx}`, nextIdx);
+                const newAsm = createDefaultAssembly(`조립체 ${nextIdx}`, nextIdx, null, currentProductId);
                 try {
                     await API.addAssembly(newAsm);
                     setAssemblies(prev => [...prev, newAsm]);
                     setCurrentAsmId(newAsm.id);
                 } catch(e) { alert('조립체 추가 실패: ' + e.message); }
+            };
+
+            const handleAddProduct = () => {
+                if (!isAdmin) return;
+                const name = prompt("새로운 제품(과제) 이름을 입력하세요:");
+                if (!name || !name.trim()) return;
+                const newProd = createDefaultProduct(name.trim());
+                setProducts(prev => [...prev, newProd]);
+                setCurrentProductId(newProd.id);
+                const defaultAsm = createDefaultAssembly("기본 조립체", 1, null, newProd.id);
+                setAssemblies(prev => [...prev, defaultAsm]);
+                setCurrentAsmId(defaultAsm.id);
+            };
+
+            const handleRenameProduct = () => {
+                if (!isAdmin) return;
+                const prod = products.find(p => p.id === currentProductId);
+                if (!prod) return;
+                const newName = prompt(`제품 [${prod.name}]의 새 이름을 입력하세요:`, prod.name);
+                if (newName && newName.trim()) {
+                    setProducts(prev => prev.map(p => p.id === currentProductId ? { ...p, name: newName.trim() } : p));
+                }
+            };
+
+            const handleDeleteProduct = () => {
+                if (!isAdmin) return;
+                if (products.length <= 1) {
+                    alert('최소 1개의 제품은 남아있어야 합니다.');
+                    return;
+                }
+                const prod = products.find(p => p.id === currentProductId);
+                if (!confirm(`정말로 제품 [${prod.name}]과(와) 내부의 모든 데이터를 삭제하시겠습니까? 복구할 수 없습니다.`)) return;
+                
+                const nextProds = products.filter(p => p.id !== currentProductId);
+                const nextProdId = nextProds[0].id;
+                const nextAsms = assemblies.filter(a => a.productId !== currentProductId);
+                const nextCurAsm = nextAsms.find(a => a.productId === nextProdId) || createDefaultAssembly("기본 조립체", 1, null, nextProdId);
+                
+                if (!nextAsms.find(a => a.productId === nextProdId)) {
+                    nextAsms.push(nextCurAsm);
+                }
+
+                setProducts(nextProds);
+                setCurrentProductId(nextProdId);
+                setAssemblies(nextAsms);
+                setCurrentAsmId(nextCurAsm.id);
             };
 
             const handleRenameAssembly = () => {
@@ -963,18 +1025,50 @@
             return (
                 <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#f3f4f6]">
                     {/* 헤더 */}
-                    <header className="flex-none bg-slate-900 text-white p-4 shadow-md z-[60] flex flex-col sm:flex-row justify-between items-center gap-4">
-                        <div className="flex items-center gap-3 w-full sm:w-auto">
-                            <i className="fa-solid fa-layer-group text-blue-400 text-xl"></i>
-                            <select
-                                className="bg-slate-800 border border-slate-600 text-white rounded p-2 text-lg font-bold outline-none focus:border-blue-500 w-full sm:w-64"
-                                value={currentAsmId || ''}
-                                onChange={(e) => handleAsmChange(e.target.value)}
-                            >
-                                {assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                            </select>
+                    <header className="flex-none bg-slate-900 text-white p-2 sm:p-4 shadow-md z-[60] flex flex-col justify-between gap-3">
+                        {/* 상단: 제품 선택 영역 */}
+                        <div className="flex justify-between items-center w-full border-b border-slate-700 pb-2">
+                            <div className="flex items-center gap-2">
+                                <i className="fa-solid fa-cube text-blue-400 text-lg"></i>
+                                <select
+                                    className="bg-slate-800 border border-slate-600 text-white rounded p-1.5 text-sm font-bold outline-none focus:border-blue-500 w-[180px] sm:w-[300px]"
+                                    value={currentProductId || ''}
+                                    onChange={(e) => {
+                                        const newProdId = e.target.value;
+                                        setCurrentProductId(newProdId);
+                                        const nextAsms = assemblies.filter(a => a.productId === newProdId);
+                                        if (nextAsms.length > 0) {
+                                            setCurrentAsmId(nextAsms[0].id);
+                                        } else {
+                                            setCurrentAsmId(null); // useEffect 등에서 빈 배열일 때 자동 처리 대비
+                                        }
+                                    }}
+                                >
+                                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+                            {isAdmin && (
+                                <div className="flex gap-1">
+                                    <button onClick={handleAddProduct} className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 w-7 h-7 rounded text-[11px] transition shadow-sm" title="새 제품 추가"><i className="fa-solid fa-plus"></i></button>
+                                    <button onClick={handleRenameProduct} className="flex items-center justify-center bg-slate-700 hover:bg-slate-600 w-7 h-7 rounded text-[11px] transition shadow-sm" title="제품 이름 변경"><i className="fa-solid fa-pen"></i></button>
+                                    <button onClick={handleDeleteProduct} className="flex items-center justify-center bg-red-600 hover:bg-red-500 w-7 h-7 rounded text-[11px] transition shadow-sm" title="제품 삭제"><i className="fa-solid fa-trash-can"></i></button>
+                                </div>
+                            )}
                         </div>
-                        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+
+                        {/* 하단: 하위 조립체 및 도구 */}
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                                <i className="fa-solid fa-layer-group text-slate-400 pl-1"></i>
+                                <select
+                                    className="bg-slate-800 border border-slate-600 text-white rounded p-2 text-lg font-bold outline-none focus:border-blue-500 w-full sm:w-64"
+                                    value={currentAsmId || ''}
+                                    onChange={(e) => handleAsmChange(e.target.value)}
+                                >
+                                    {filteredAssemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="flex flex-wrap gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
                             {isAdmin && (
                                 <>
                                     <button onClick={handleAddAssembly} className="flex-shrink-0 flex items-center gap-1 bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded text-sm font-medium transition">
@@ -991,6 +1085,7 @@
                             <button onClick={handleLogout} className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded text-sm font-medium transition text-red-400">
                                 <i className="fa-solid fa-right-from-bracket"></i> 로그아웃
                             </button>
+                        </div>
                         </div>
                     </header>
 
@@ -1015,7 +1110,7 @@
                                     {renderAssemblyTree(null, 0)}
                                 </div>
                                 <div className="bg-white p-2 border-t text-[9px] text-gray-400 flex justify-between italic">
-                                    <span>총 {assemblies.length}개</span>
+                                    <span>총 {filteredAssemblies.length}개</span>
                                     {isAdmin && <button onClick={() => handleSubAsmAdd(null)} className="text-blue-600 font-bold hover:underline">추가 +</button>}
                                 </div>
                             </div>
