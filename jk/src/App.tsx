@@ -388,156 +388,100 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 p-2 md:p-4 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 overflow-hidden">
+      <div className="max-w-7xl mx-auto space-y-3 h-full flex flex-col">
 
-        {/* 헤더 */}
+        {/* 헤더 & 요약 통합 바 */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200"
+          className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200"
         >
-          {/* 왼쪽: 타이틀 + 수불관리 이동 버튼 */}
-          <div className="space-y-3">
-            {/* 수불관리로 돌아가기 버튼 */}
+          {/* 타이틀 및 이동 버튼 */}
+          <div className="flex items-center gap-4">
             <button
               onClick={goToInventory}
-              className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all border border-slate-200 hover:border-indigo-200"
+              className="flex items-center justify-center w-10 h-10 text-slate-500 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 rounded-xl transition-all border border-slate-200"
+              title="수불관리로 돌아가기"
             >
-              <ArrowLeft className="w-3 h-3" />
-              수불관리 시스템으로
+              <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Users className="w-5 h-5 text-indigo-600" />
-                <span className="text-indigo-600 font-bold text-xs uppercase tracking-widest">Company Master Management</span>
-                {/* 읽기전용 배지 (비관리자) */}
-                {!isAdmin && (
-                  <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    <Eye className="w-3 h-3" /> 읽기 전용
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black text-slate-800 tracking-tight">협력업체 자금계획</h1>
+                {isAdmin ? (
+                  <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Shield className="w-2.5 h-2.5" /> 관리자
                   </span>
-                )}
-                {isAdmin && (
-                  <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    <Shield className="w-3 h-3" /> 관리자
+                ) : (
+                  <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Eye className="w-2.5 h-2.5" /> 읽기전용
                   </span>
                 )}
               </div>
-              <h1 className="text-3xl font-black text-slate-800 tracking-tight">협력업체 자금계획</h1>
             </div>
           </div>
 
-          {/* 오른쪽: 통계 카드 */}
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="bg-slate-100 p-5 rounded-2xl flex flex-col items-end border border-slate-200">
-              <span className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-tighter text-right">전체 업체 총 잔액</span>
-              <span className="text-xl font-black text-slate-600 tabular-nums">₩{formatKrw(stats.totalBalance)}</span>
+          {/* 핵심 요약 (띠 형태) */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-2">
+              {[
+                { label: '소액', val: stats.p1Total, bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-100' },
+                { label: '업무', val: stats.p2Total, bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-100' },
+                { label: '전략', val: stats.p3Total, bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100' }
+              ].map(s => (
+                <div key={s.label} className={`${s.bg} ${s.text} ${s.border} border px-3 py-1.5 rounded-xl flex items-center gap-2`}>
+                  <span className="text-[10px] font-bold uppercase opacity-60">{s.label}</span>
+                  <span className="text-sm font-black tabular-nums">₩{formatKrw(s.val)}</span>
+                </div>
+              ))}
             </div>
-            <div className="bg-indigo-600 text-white p-5 rounded-2xl flex flex-col items-end shadow-lg shadow-indigo-100">
-              <span className="text-[10px] font-bold text-indigo-200 mb-1 uppercase tracking-tighter text-right">금회 지급 계획 총액</span>
-              <span className="text-2xl font-black tabular-nums">₩{formatKrw(stats.grandTotalPlanned)}</span>
+            <div className="h-8 w-px bg-slate-200 hidden lg:block" />
+            <div className="bg-slate-900 text-white px-4 py-2 rounded-xl flex flex-col items-end shadow-lg ring-4 ring-indigo-500/10">
+              <span className="text-[9px] font-bold text-indigo-300 uppercase tracking-tighter">금회 지급 계획 총액</span>
+              <span className="text-lg font-black tabular-nums">₩{formatKrw(stats.grandTotalPlanned)}</span>
             </div>
           </div>
         </motion.header>
 
-        {/* 저장 상태 표시 */}
-        <AnimatePresence>
-          {saveStatus !== 'idle' && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 rounded-xl shadow-lg font-bold text-sm ${
-                saveStatus === 'saving' ? 'bg-indigo-600 text-white' :
-                saveStatus === 'saved' ? 'bg-emerald-500 text-white' :
-                'bg-red-500 text-white'
-              }`}
-            >
-              {saveStatus === 'saving' && <Loader2 className="w-4 h-4 animate-spin" />}
-              {saveStatus === 'saved' && <Save className="w-4 h-4" />}
-              {saveStatus === 'error' && '저장 실패 ✗'}
-              {saveStatus === 'saving' && 'Firebase 저장 중...'}
-              {saveStatus === 'saved' && '저장 완료 ✓'}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 요약 대시보드 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            { title: '소액 조기 정산', amount: stats.p1Total, icon: CheckCircle2, color: 'blue', desc: '정산 우선 (전액 지급)' },
-            { title: '업무 연속성 유지', amount: stats.p2Total, icon: AlertCircle, color: 'emerald', desc: '협력 유지 필수 (전액 지급)' },
-            { title: '전략적 부분 지급', amount: stats.p3Total, icon: CreditCard, color: 'amber', desc: '고액 중 부분 합의액' }
-          ].map((card, idx) => (
-            <motion.div
-              key={card.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              className={`bg-white border border-${card.color}-100 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow`}
-            >
-              <div className="flex justify-between items-center mb-2">
-                <h3 className={`text-${card.color}-700 font-bold text-xs uppercase`}>{card.title}</h3>
-                <card.icon className={`w-4 h-4 text-${card.color}-500`} />
-              </div>
-              <p className="text-2xl font-black text-slate-800">₩{formatKrw(card.amount)}</p>
-              <p className="text-[10px] text-slate-400 mt-1">{card.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-
         {/* 컨트롤 패널 */}
-        <div className="flex flex-col md:flex-row gap-4 items-center bg-white p-4 rounded-2xl border border-slate-200">
+        <div className="flex flex-col md:flex-row gap-3 items-center bg-white p-2 rounded-2xl border border-slate-200">
           <div className="relative flex-1 w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="업체명 또는 분류로 검색..."
-              className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-100 transition-all outline-none text-sm font-medium"
+              placeholder="업체명 검색..."
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-100 transition-all outline-none text-sm font-medium"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            {(searchTerm || filterType !== 'all' || selectedPriorities.length > 0 || selectedCategories.length > 0) && (
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 pointer-events-none">
-                <div className="h-4 w-px bg-slate-200" />
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">검색 결과:</span>
-                  <span className="text-xs font-black text-indigo-600 font-mono">{processedStats.count}개</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">잔액 합계:</span>
-                  <span className="text-xs font-black text-slate-700 font-mono">₩{formatKrw(processedStats.subtotalBalance)}</span>
-                </div>
+            {(searchTerm || filterType !== 'all') && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+                <span className="text-[10px] font-bold text-indigo-600 font-mono bg-indigo-50 px-2 py-0.5 rounded-lg">{processedStats.count}개 발견</span>
               </div>
             )}
           </div>
           <div className="flex gap-2 w-full md:w-auto">
             <div className="flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto flex-1 md:flex-none">
-              {[
-                { id: 'all', label: `전체 (${data.length})` },
-                { id: 'p1', label: '소액' },
-                { id: 'p2', label: '업무' },
-                { id: 'p3', label: '전략' },
-                { id: 'none', label: '미분류' },
-              ].map((btn) => (
+              {['all', 'p1', 'p2', 'p3', 'none'].map((id) => (
                 <button
-                  key={btn.id}
-                  onClick={() => setFilterType(btn.id)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                    filterType === btn.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  key={id}
+                  onClick={() => setFilterType(id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    filterType === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  {btn.label}
+                  {id === 'all' ? '전체' : id === 'p1' ? '소액' : id === 'p2' ? '업무' : id === 'p3' ? '전략' : '미분류'}
                 </button>
               ))}
             </div>
             {isAdmin && (
               <button
                 onClick={handleAddCompany}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-indigo-500 transition-all shadow-sm active:scale-95"
+                className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-indigo-500 transition-all shadow-sm active:scale-95"
               >
-                <Plus className="w-4 h-4" />
-                업체 추가
+                <Plus className="w-3.5 h-3.5" />
+                추가
               </button>
             )}
           </div>
@@ -547,9 +491,9 @@ const App: React.FC = () => {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden"
+          className="flex-grow bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0"
         >
-          <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+          <div className="overflow-x-auto overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent flex-grow">
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="bg-slate-50 border-b border-slate-100 shadow-sm">
