@@ -482,14 +482,35 @@ const App: React.FC = () => {
               ))}
             </div>
             {isAdmin && (
-              <button
-                onClick={handleAddCompany}
-                className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-indigo-500 transition-all shadow-sm active:scale-95"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                추가
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    saveToFirebase(data)
+                      .then(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000); })
+                      .catch(() => setSaveStatus('error'));
+                    setSaveStatus('saving');
+                  }}
+                  className="bg-emerald-600 text-white px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-emerald-500 transition-all shadow-sm active:scale-95"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  저장
+                </button>
+                <button
+                  onClick={handleAddCompany}
+                  className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-indigo-500 transition-all shadow-sm active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  추가
+                </button>
+              </div>
             )}
+            <button
+              onClick={() => window.print()}
+              className="bg-slate-700 text-white px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold hover:bg-slate-600 transition-all shadow-sm active:scale-95"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              인쇄
+            </button>
           </div>
         </div>
 
@@ -707,53 +728,6 @@ const App: React.FC = () => {
             </table>
           </div>
         </motion.div>
-
-        {/* 푸터 */}
-        <motion.footer
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-slate-900 text-white p-8 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6"
-        >
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700">
-              <TrendingUp className="w-6 h-6 text-indigo-400" />
-            </div>
-            <div>
-              <p className="font-black text-lg">데이터 일관성 확인</p>
-              <p className="text-sm text-slate-400">총 {data.length}개 업체에 대한 미수금 시뮬레이션이 활성화되었습니다.</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-sm transition-all flex items-center gap-2 active:scale-95"
-              onClick={() => window.print()}
-            >
-              <Printer className="w-4 h-4" />
-              보고서 출력
-            </button>
-            <button
-              className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-bold text-sm transition-all flex items-center gap-2 active:scale-95 border border-indigo-500/30"
-              onClick={goToInventory}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              수불관리로
-            </button>
-            {isAdmin && (
-              <button
-                className="px-8 py-3 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl font-black text-sm transition-all shadow-lg flex items-center gap-2 active:scale-95"
-                onClick={() => {
-                  saveToFirebase(data)
-                    .then(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000); })
-                    .catch(() => setSaveStatus('error'));
-                  setSaveStatus('saving');
-                }}
-              >
-                <Save className="w-4 h-4" />
-                즉시 저장
-              </button>
-            )}
-          </div>
-        </motion.footer>
       </div>
     </div>
   );
