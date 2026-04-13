@@ -609,10 +609,10 @@ const App: React.FC = () => {
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="bg-slate-50 border-b border-slate-100 shadow-sm">
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-16">ID</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => requestSort('name')}>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors w-80" onClick={() => requestSort('name')}>
                     <div className="flex items-center">업체명 {renderSortIcon('name')}</div>
                   </th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-72">
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-56">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center cursor-pointer hover:text-indigo-600" onClick={() => requestSort('categories' as any)}>
                         분류 (다중) {renderSortIcon('categories' as any)}
@@ -661,10 +661,10 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   </th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => requestSort('balance')}>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right cursor-pointer hover:text-indigo-600 transition-colors w-44" onClick={() => requestSort('balance')}>
                     <div className="flex items-center justify-end">미수 잔액 {renderSortIcon('balance')}</div>
                   </th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => requestSort('orderAmount')}>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right cursor-pointer hover:text-indigo-600 transition-colors w-44" onClick={() => requestSort('orderAmount')}>
                     <div className="flex items-center justify-end">발주 금액 {renderSortIcon('orderAmount')}</div>
                   </th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
