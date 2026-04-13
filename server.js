@@ -66,10 +66,13 @@ app.put('/api/current', (req, res) => {
 
 // [PUT] 전체 데이터 일괄 업데이트 (순서/계층 변경용)
 app.put('/api/data', (req, res) => {
-    const { assemblies, currentAsmId } = req.body;
+    const { assemblies, currentAsmId, products, currentProductId, finance } = req.body;
     const db = readDB();
     if (assemblies) db.assemblies = assemblies;
-    if (currentAsmId) db.currentAsmId = currentAsmId;
+    if (currentAsmId !== undefined) db.currentAsmId = currentAsmId;
+    if (products) db.products = products;
+    if (currentProductId !== undefined) db.currentProductId = currentProductId;
+    if (finance) db.finance = finance;
     writeDB(db);
     res.json({ ok: true });
 });

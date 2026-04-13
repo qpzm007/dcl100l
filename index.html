@@ -159,7 +159,7 @@
                     return res.json();
                 } else {
                     const doc = await db.collection('app').doc('state').get();
-                    return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null, products: [], currentProductId: null };
+                    return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null, products: [], currentProductId: null, finance: {} };
                 }
             },
             saveAssembly: async (asm) => {
@@ -205,8 +205,8 @@
                     return { currentAsmId: null };
                 }
             },
-            saveAll: async (assemblies, currentAsmId, products, currentProductId) => {
-                const data = JSON.parse(JSON.stringify({ assemblies, currentAsmId, products, currentProductId }));
+            saveAll: async (assemblies, currentAsmId, products, currentProductId, finance) => {
+                const data = JSON.parse(JSON.stringify({ assemblies, currentAsmId, products, currentProductId, finance }));
                 if (isLocal) {
                     await fetch('/api/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
                 } else {
@@ -353,6 +353,8 @@
             const [selectedPartId, setSelectedPartId] = useState(null);
             const [dragState, setDragState] = useState(null);
             const [isLoaded, setIsLoaded] = useState(false);
+            const [currentView, setCurrentView] = useState('inventory'); // 'inventory', 'finance'
+            const [financeData, setFinanceData] = useState({}); // { [productId]: { budget, spent, notes } }
             const [fullscreenPanel, setFullscreenPanel] = useState(null);
             const [isRightPanelOpen, setIsRightPanelOpen] = useState(() => {
                 // 모바일(768px 미만)에서는 기본적으로 닫힘
@@ -442,6 +444,7 @@
                         setProducts(prods);
                         setCurrentProductId(curProdId);
                         setAssemblies(asms);
+                        setFinanceData(data.finance || {});
                         setCurrentAsmId(curAsmId || asms.filter(a => a.productId === curProdId)[0]?.id);
                     })
                     .catch(e => {
@@ -457,15 +460,13 @@
             }, [userRole]);
 
             // 자동 저장 (debounce 500ms)
-            const autoSave = useCallback((asms, curAsmId, prods, curProdId) => {
+            const autoSave = useCallback((asms, curAsmId, prods, curProdId, finance) => {
                 if (!isAdmin) return; // 사용자 권한은 저장 불가
                 clearTimeout(saveTimer);
                 saveTimer = setTimeout(async () => {
                     try {
-                        if (asms.length > 0) {
-                            await API.saveAll(asms, curAsmId, prods, curProdId);
-                            showSaveIndicator('저장됨 ✓');
-                        }
+                        await API.saveAll(asms, curAsmId, prods, curProdId, finance);
+                        showSaveIndicator('저장됨 ✓');
                     } catch(e) {
                         showSaveIndicator('저장 실패 ✗');
                     }
@@ -474,10 +475,10 @@
 
             // 변경 시 자동 저장 트리거
             useEffect(() => {
-                if (isLoaded && assemblies.length > 0 && currentAsmId && products.length > 0) {
-                    autoSave(assemblies, currentAsmId, products, currentProductId);
+                if (isLoaded && products.length > 0) {
+                    autoSave(assemblies, currentAsmId, products, currentProductId, financeData);
                 }
-            }, [assemblies, currentAsmId, products, currentProductId, isLoaded]);
+            }, [assemblies, currentAsmId, products, currentProductId, financeData, isLoaded]);
 
             // 조립체 전환 또는 화면 크기 변경 시 해당 조립체의 저장된 줌/팬 적용
             useEffect(() => {
@@ -1099,6 +1100,14 @@
                                     </button>
                                     <button onClick={handleDeleteAssembly} className="flex-shrink-0 flex items-center gap-1 bg-red-600 hover:bg-red-500 px-3 py-2 rounded text-sm font-medium transition">
                                         <i className="fa-solid fa-trash"></i> 삭제
+                                    </button>
+                                    {/* ── 자금계획 바로가기 (관리자 전용) ── */}
+                                    <button
+                                        onClick={() => window.location.href = 'jk_build/index.html'}
+                                        className="flex-shrink-0 flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 px-3 py-2 rounded text-sm font-bold transition text-white shadow-sm shadow-amber-500/30"
+                                        title="협력업체 자금계획 관리"
+                                    >
+                                        <i className="fa-solid fa-coins"></i> 자금계획
                                     </button>
                                 </>
                             )}
