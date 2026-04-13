@@ -389,13 +389,31 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen bg-slate-50 p-2 md:p-4 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 overflow-hidden">
+      {/* 인쇄 관련 스타일 */}
+      <style>{`
+        @media print {
+          body, html { height: auto !important; overflow: visible !important; }
+          .min-h-screen, .h-screen { height: auto !important; min-h-screen: none !important; overflow: visible !important; }
+          .max-w-7xl { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
+          .no-print { display: none !important; }
+          .overflow-hidden, .overflow-y-auto { overflow: visible !important; max-height: none !important; height: auto !important; }
+          .flex-grow { flex-grow: 0 !important; }
+          .rounded-2xl, .shadow-sm { border-radius: 0 !important; box-shadow: none !important; border: none !important; }
+          .p-2, .md:p-4 { padding: 0 !important; }
+          .space-y-3 > * + * { margin-top: 20px !important; }
+          table { width: 100% !important; border-collapse: collapse !important; }
+          th, td { border: 1px solid #e2e8f0 !important; }
+          .sticky { position: static !important; }
+        }
+      `}</style>
+
       <div className="max-w-7xl mx-auto space-y-3 h-full flex flex-col pb-2">
 
         {/* 헤더 & 요약 통합 바 */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200"
+          className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200 no-print"
         >
           {/* 타이틀 및 이동 버튼 */}
           <div className="flex items-center gap-4">
@@ -409,8 +427,11 @@ const App: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black text-slate-800 tracking-tight">협력업체 자금계획</h1>
+                <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  총 {data.length}개 업체
+                </span>
                 {isAdmin ? (
-                  <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                     <Shield className="w-2.5 h-2.5" /> 관리자
                   </span>
                 ) : (
@@ -451,7 +472,7 @@ const App: React.FC = () => {
         </motion.header>
 
         {/* 컨트롤 패널 */}
-        <div className="flex flex-col md:flex-row gap-3 items-center bg-white p-2 rounded-2xl border border-slate-200">
+        <div className="flex flex-col md:flex-row gap-3 items-center bg-white p-2 rounded-2xl border border-slate-200 no-print">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
