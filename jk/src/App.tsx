@@ -275,10 +275,8 @@ const App: React.FC = () => {
     return JSON.parse(jsonMatch[0]);
   };
 
-  const handleAiExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !isAdmin) return;
-
+  const performImageAiAnalysis = async (file: File | Blob) => {
+    if (!isAdmin) return;
     setIsAiProcessing(true);
     setAiError(null);
 
@@ -292,7 +290,6 @@ const App: React.FC = () => {
       const base64 = await base64Promise;
       const extractedData = await processImageWithGemini(base64);
 
-      // 데이터 병합 (이름 기준 매칭)
       const nextData = [...data];
       let updatedCount = 0;
 
@@ -319,6 +316,34 @@ const App: React.FC = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
+  const handleAiExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await performImageAiAnalysis(file);
+  };
+
+  // ─────────────────────────── 붙여넣기(Ctrl+V) 지원 ───────────────────────────
+  useEffect(() => {
+    if (!isAdmin || currentView !== 'dashboard') return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            performImageAiAnalysis(blob);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isAdmin, currentView, data]); // data가 변경될 때마다 최신 상태를 참조할 수 있도록 함
 
   // 자동 저장 (관리자 전용, debounce 800ms)
   const triggerSave = useCallback((companies: CompanyData[]) => {
@@ -706,6 +731,10 @@ const App: React.FC = () => {
                 >
                   <Camera className="w-4 h-4" />
                 </button>
+                <div className="flex flex-col items-start leading-none pr-1 pointer-events-none select-none">
+                  <span className="text-[7px] font-bold text-indigo-400 uppercase tracking-tighter">SCREENSHOT</span>
+                  <span className="text-[9px] font-black text-indigo-600">CTRL+V</span>
+                </div>
               </div>
             )}
             {(searchTerm || filterType !== 'all') && !isAdmin && (
