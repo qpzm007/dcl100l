@@ -24,11 +24,13 @@ import {
   CloudOff,
   Shield,
   Eye,
-  Loader2
+  Loader2,
+  Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { GoogleGenAI } from '@google/genai';
 
 // ─────────────────────────── Firebase 초기화 ───────────────────────────
 const firebaseConfig = {
@@ -221,6 +223,11 @@ const App: React.FC = () => {
   const [isPriorityFilterOpen, setIsPriorityFilterOpen] = useState(false);
   const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
 
+  // AI 관련 상태
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // 데이터 로드 (Firebase 우선, 없으면 초기값)
   useEffect(() => {
     setIsLoading(true);
@@ -232,6 +239,85 @@ const App: React.FC = () => {
       }
     }).finally(() => setIsLoading(false));
   }, []);
+
+  // ─────────────────────────── AI 처리 로직 ───────────────────────────
+  const processImageWithGemini = async (base64Image: string) => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+      throw new Error("Gemini API Key가 설정되지 않았습니다. .env 파일을 확인해주세요.");
+    }
+
+    const genAI = new GoogleGenAI({ apiKey });
+    
+    // 차세대 SDK는 ai.models.generateContent 형식을 사용합니다.
+    const result = await genAI.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                data: base64Image.split(',')[1],
+                mimeType: "image/png"
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const jsonMatch = text.match(/\[.*\]/s);
+    if (!jsonMatch) throw new Error("데이터를 추출하지 못했습니다.");
+    return JSON.parse(jsonMatch[0]);
+  };
+
+  const handleAiExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !isAdmin) return;
+
+    setIsAiProcessing(true);
+    setAiError(null);
+
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      const base64 = await base64Promise;
+      const extractedData = await processImageWithGemini(base64);
+
+      // 데이터 병합 (이름 기준 매칭)
+      const nextData = [...data];
+      let updatedCount = 0;
+
+      extractedData.forEach((newItem: any) => {
+        const index = nextData.findIndex(d => d.name.trim() === newItem.name.trim());
+        if (index !== -1) {
+          nextData[index] = {
+            ...nextData[index],
+            balance: newItem.balance ?? nextData[index].balance,
+            orderAmount: newItem.orderAmount ?? nextData[index].orderAmount
+          };
+          updatedCount++;
+        }
+      });
+
+      setData(nextData);
+      triggerSave(nextData);
+      alert(`AI 분석 완료: ${updatedCount}개의 업체 데이터를 업데이트했습니다.`);
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || "AI 처리 중 오류가 발생했습니다.");
+    } finally {
+      setIsAiProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // 자동 저장 (관리자 전용, debounce 800ms)
   const triggerSave = useCallback((companies: CompanyData[]) => {
@@ -541,11 +627,29 @@ const App: React.FC = () => {
             <input
               type="text"
               placeholder="업체명 검색..."
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-100 transition-all outline-none text-sm font-medium"
+              className="w-full pl-9 pr-12 py-2 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-100 transition-all outline-none text-sm font-medium"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            {(searchTerm || filterType !== 'all') && (
+            {isAdmin && (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleAiExcelUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                  title="엑셀 캡처 이미지로 업데이트 (Excel Submit)"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+            {(searchTerm || filterType !== 'all') && !isAdmin && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
                 <span className="text-[10px] font-bold text-indigo-600 font-mono bg-indigo-50 px-2 py-0.5 rounded-lg">{processedStats.count}개 발견</span>
               </div>
@@ -866,9 +970,82 @@ const App: React.FC = () => {
                   })}
                 </AnimatePresence>
               </tbody>
+              <tfoot className="sticky bottom-0 z-10 bg-slate-100/90 backdrop-blur-md border-t border-slate-200">
+                <tr className="font-black text-slate-700">
+                  <td colSpan={2} className="px-6 py-4 text-right text-[10px] uppercase tracking-wider text-slate-400">결과 합계 ({processedStats.count})</td>
+                  <td className="px-6 py-4"></td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="text-[10px] font-bold text-slate-400">₩</span>
+                      <span className="text-sm tabular-nums">{formatKrw(processedStats.subtotalBalance)}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="text-[10px] font-bold text-slate-400">₩</span>
+                      <span className="text-sm tabular-nums text-slate-500">{formatKrw(processedStats.subtotalOrder)}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex justify-center">
+                      <div className="px-3 py-1 bg-white/50 rounded-lg border border-slate-200 text-[10px] text-slate-500">
+                        필터링된 결과 요약
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="text-[10px] font-bold text-indigo-500">₩</span>
+                      <span className="text-sm tabular-nums text-indigo-600 font-black">{formatKrw(processedStats.subtotalPlanned)}</span>
+                    </div>
+                  </td>
+                  {isAdmin && <td className="px-6 py-4"></td>}
+                </tr>
+              </tfoot>
             </table>
           </div>
         </motion.div>
+
+        {/* AI 처리 중 오버레이 */}
+        <AnimatePresence>
+          {isAiProcessing && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-6"
+            >
+              <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center space-y-4 shadow-2xl">
+                <div className="relative w-16 h-16 mx-auto">
+                  <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+                  <Camera className="absolute inset-0 m-auto w-6 h-6 text-indigo-600" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black text-slate-800">AI 분석 중...</h3>
+                  <p className="text-slate-500 text-sm">이미지에서 데이터를 추출하고 있습니다.<br/>잠시만 기다려 주세요.</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 에러 알림 */}
+        <AnimatePresence>
+          {aiError && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[2000] bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-bold text-sm"
+            >
+              <AlertCircle className="w-5 h-5" />
+              {aiError}
+              <button onClick={() => setAiError(null)} className="ml-4 hover:bg-white/20 rounded px-2 text-xs">닫기</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
       </div>
     </div>
   );
