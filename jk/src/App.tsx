@@ -226,6 +226,7 @@ const App: React.FC = () => {
   // AI 관련 상태
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<'dashboard' | 'visual'>('dashboard');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 데이터 로드 (Firebase 우선, 없으면 초기값)
@@ -617,8 +618,66 @@ const App: React.FC = () => {
                 <span className="text-lg font-black tabular-nums">₩{formatKrw(stats.grandTotalPlanned)}</span>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentView(currentView === 'dashboard' ? 'visual' : 'dashboard')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-black text-sm transition-all shadow-sm active:scale-95 ${
+                  currentView === 'visual' 
+                  ? 'bg-indigo-600 text-white border-indigo-600 ring-4 ring-indigo-500/10' 
+                  : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-600 hover:text-indigo-600'
+                }`}
+              >
+                <TrendingUp className="w-4 h-4" />
+                {currentView === 'visual' ? '데이터 표 보기' : '자금계획 시각화'}
+              </button>
+
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95"
+              >
+                <Printer className="w-4 h-4" />
+                인쇄용 보고서
+              </button>
+            </div>
           </div>
         </motion.header>
+
+        {/* 인쇄 전용 요약 (화면에는 숨김, 인쇄시 상단 표시) */}
+        <div className="hidden print:block print:mb-10 w-full">
+          <div className="border-[6px] border-slate-900 p-8 rounded-none">
+            <h2 className="text-4xl font-black mb-8 border-b-[6px] border-slate-900 pb-4 uppercase tracking-tighter">자금 집행 계획 요약 보고서</h2>
+            <div className="grid grid-cols-2 gap-12 mb-10">
+              <div className="space-y-6">
+                <div>
+                  <span className="text-xs font-bold text-slate-500 block uppercase tracking-widest mb-1">총 미수 잔액</span>
+                  <span className="text-3xl font-black tabular-nums">₩ {formatKrw(stats.totalBalance)}</span>
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-500 block uppercase tracking-widest mb-1">총 발주 금액</span>
+                  <span className="text-3xl font-black tabular-nums">₩ {formatKrw(stats.totalOrder)}</span>
+                </div>
+              </div>
+              <div className="p-6 bg-slate-900 text-white rounded-none flex flex-col justify-center border-l-[12px] border-indigo-500">
+                <span className="text-xs font-bold opacity-70 uppercase tracking-widest mb-2">총 집행 계획 총액 (P1+P2+P3)</span>
+                <span className="text-5xl font-black tabular-nums">₩ {formatKrw(stats.grandTotalPlanned)}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-6 text-center border-t-2 border-slate-200 pt-8">
+              <div className="border-r border-slate-100">
+                <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase">소액 정산</div>
+                <div className="text-lg font-black italic">₩ {formatKrw(stats.p1Total)}</div>
+              </div>
+              <div className="border-r border-slate-100">
+                <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase">업무 원활화</div>
+                <div className="text-lg font-black italic">₩ {formatKrw(stats.p2Total)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase">전략적 지급</div>
+                <div className="text-lg font-black italic">₩ {formatKrw(stats.p3Total)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* 컨트롤 패널 */}
         <div className="flex flex-col md:flex-row gap-3 items-center bg-white p-2 rounded-2xl border border-slate-200 no-print">
@@ -703,7 +762,8 @@ const App: React.FC = () => {
         </div>
 
         {/* 메인 테이블 */}
-        <motion.div
+        {currentView === 'dashboard' ? (
+          <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="flex-grow bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0"
@@ -1005,6 +1065,14 @@ const App: React.FC = () => {
             </table>
           </div>
         </motion.div>
+      ) : (
+        <FinancialVisuals 
+          data={data} 
+          stats={stats} 
+          formatKrw={formatKrw} 
+          getTagColor={getTagColor} 
+        />
+      )}
 
         {/* AI 처리 중 오버레이 */}
         <AnimatePresence>
@@ -1050,5 +1118,174 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+// ─────────────────────────── 시각화 인포그래픽 컴포넌트 ───────────────────────────
+const FinancialVisuals: React.FC<{ 
+  data: CompanyData[], 
+  stats: any, 
+  formatKrw: (v: number) => string,
+  getTagColor: (t: string) => string
+}> = ({ data, stats, formatKrw, getTagColor }) => {
+  
+  // 카테고리별 데이터 집계
+  const categoryStats = useMemo(() => {
+    const map = new Map<string, { balance: number; order: number; count: number }>();
+    data.forEach(item => {
+      const cats = item.categories.length > 0 ? item.categories : ["미분류"];
+      cats.forEach(cat => {
+        const prev = map.get(cat) || { balance: 0, order: 0, count: 0 };
+        map.set(cat, {
+          balance: prev.balance + item.balance,
+          order: prev.order + (item.orderAmount || 0),
+          count: prev.count + 1
+        });
+      });
+    });
+    return Array.from(map.entries())
+      .map(([name, s]) => ({ name, ...s, total: s.balance + s.order }))
+      .sort((a, b) => b.total - a.total);
+  }, [data]);
+
+  const maxTotal = Math.max(...categoryStats.map(s => s.total), 1);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="flex-grow flex flex-col gap-6 overflow-y-auto no-scrollbar scroll-smooth"
+    >
+      {/* 1. 상단 요약 요약 카드 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-2">
+        <VisualCard 
+          icon={<CreditCard className="w-5 h-5" />} 
+          label="전체 미수금" 
+          val={`₩ ${formatKrw(stats.totalBalance)}`} 
+          sub="총 누적 채무"
+          color="indigo"
+        />
+        <VisualCard 
+          icon={<Printer className="w-5 h-5" />} 
+          label="전체 발주액" 
+          val={`₩ ${formatKrw(stats.totalOrder)}`} 
+          sub="확정된 발주 내역"
+          color="slate"
+        />
+        <VisualCard 
+          icon={<AlertCircle className="w-5 h-5" />} 
+          label="금회 지급 계획액" 
+          val={`₩ ${formatKrw(stats.grandTotalPlanned)}`} 
+          sub={`${((stats.grandTotalPlanned / (stats.totalBalance || 1)) * 100).toFixed(1)}% 상환 계획`}
+          color="emerald"
+          accent
+        />
+        <VisualCard 
+          icon={<Users className="w-5 h-5" />} 
+          label="활성 협력사" 
+          val={`${data.filter(d => d.balance > 0).length}개`} 
+          sub={`전체 ${data.length}개 중`}
+          color="blue"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 2. 카테고리 분포 (Bar Chart) */}
+        <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+              <Filter className="w-5 h-5 text-indigo-600" />
+              업종별 자금 분포 현황
+            </h3>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Category Distribution</span>
+          </div>
+          <div className="space-y-6">
+            {categoryStats.slice(0, 8).map((cat, idx) => (
+              <div key={cat.name} className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${idx === 0 ? 'bg-indigo-600' : 'bg-slate-300'}`}></span>
+                    <span className="text-sm font-bold text-slate-700">{cat.name}</span>
+                    <span className="text-[10px] text-slate-400 font-medium">({cat.count}개 업체)</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-black text-slate-800">₩ {formatKrw(cat.total)}</span>
+                  </div>
+                </div>
+                <div className="h-3 bg-slate-50 rounded-full overflow-hidden border border-slate-100 p-0.5">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(cat.total / maxTotal) * 100}%` }}
+                    transition={{ duration: 0.8, delay: idx * 0.1 }}
+                    className={`h-full rounded-full ${idx === 0 ? 'bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.3)]' : 'bg-slate-400'}`}
+                  ></motion.div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. 우선순위별 계획 비중 (Circular Inforgraphic) */}
+        <div className="bg-indigo-900 border border-indigo-950 rounded-3xl p-8 text-white relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl"></div>
+          
+          <div className="relative">
+            <h3 className="text-xl font-black mb-1">지급 우선순위 분석</h3>
+            <p className="text-indigo-300 text-xs font-medium mb-10">금회 최우선 현황 브리핑</p>
+
+            <div className="space-y-8">
+              <PriorityRow label="소액 정산" val={stats.p1Total} total={stats.grandTotalPlanned} color="bg-blue-400" />
+              <PriorityRow label="업무 원활화" val={stats.p2Total} total={stats.grandTotalPlanned} color="bg-emerald-400" />
+              <PriorityRow label="전략적 지급" val={stats.p3Total} total={stats.grandTotalPlanned} color="bg-amber-400" />
+            </div>
+          </div>
+
+          <div className="mt-12 p-5 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-[10px] font-black uppercase text-indigo-300">상환율 리포트</span>
+              <span className="text-xs font-bold text-white italic">Plan vs Debt</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-black">
+                {((stats.grandTotalPlanned / (stats.totalBalance || 1)) * 100).toFixed(1)}%
+              </span>
+              <span className="text-xs font-bold text-indigo-400 pb-1">상환 예정</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const VisualCard: React.FC<{ icon: any, label: string, val: string, sub: string, color: string, accent?: boolean }> = ({ icon, label, val, sub, color, accent }) => (
+  <div className={`p-5 rounded-3xl border transition-all duration-500 hover:shadow-xl hover:-translate-y-1 ${
+    accent ? 'bg-indigo-600 text-white border-indigo-700 shadow-lg shadow-indigo-600/20' : 'bg-white text-slate-800 border-slate-200'
+  }`}>
+    <div className="flex items-center gap-3 mb-3">
+      <div className={`p-2 rounded-xl ${accent ? 'bg-white/20' : 'bg-slate-100 text-slate-400'}`}>{icon}</div>
+      <span className={`text-[10px] font-black uppercase tracking-widest ${accent ? 'text-indigo-100' : 'text-slate-400'}`}>{label}</span>
+    </div>
+    <div className="space-y-0.5">
+      <div className="text-xl font-black tabular-nums">{val}</div>
+      <div className={`text-[10px] font-bold ${accent ? 'text-indigo-200' : 'text-slate-400'}`}>{sub}</div>
+    </div>
+  </div>
+);
+
+const PriorityRow: React.FC<{ label: string, val: number, total: number, color: string }> = ({ label, val, total, color }) => (
+  <div className="space-y-2">
+    <div className="flex justify-between items-end">
+      <span className="text-xs font-bold text-indigo-200 uppercase">{label}</span>
+      <span className="text-sm font-black">₩ {new Intl.NumberFormat('ko-KR').format(val)}</span>
+    </div>
+    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+      <motion.div 
+        initial={{ width: 0 }}
+        animate={{ width: `${(val / (total || 1)) * 100}%` }}
+        transition={{ duration: 1 }}
+        className={`h-full ${color}`}
+      ></motion.div>
+    </div>
+  </div>
+);
 
 export default App;
