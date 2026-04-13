@@ -388,8 +388,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-2 md:p-4 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 overflow-hidden">
-      <div className="max-w-7xl mx-auto space-y-3 h-full flex flex-col">
+    <div className="h-screen bg-slate-50 p-2 md:p-4 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 overflow-hidden">
+      <div className="max-w-7xl mx-auto space-y-3 h-full flex flex-col pb-2">
 
         {/* 헤더 & 요약 통합 바 */}
         <motion.header
@@ -424,22 +424,28 @@ const App: React.FC = () => {
 
           {/* 핵심 요약 (띠 형태) */}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-2">
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1">
               {[
-                { label: '소액', val: stats.p1Total, bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-100' },
-                { label: '업무', val: stats.p2Total, bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-100' },
-                { label: '전략', val: stats.p3Total, bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100' }
+                { label: '소액', val: stats.p1Total, bg: 'bg-white', text: 'text-blue-700' },
+                { label: '업무', val: stats.p2Total, bg: 'bg-white', text: 'text-emerald-700' },
+                { label: '전략', val: stats.p3Total, bg: 'bg-white', text: 'text-amber-700' }
               ].map(s => (
-                <div key={s.label} className={`${s.bg} ${s.text} ${s.border} border px-3 py-1.5 rounded-xl flex items-center gap-2`}>
+                <div key={s.label} className={`${s.bg} ${s.text} px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-sm`}>
                   <span className="text-[10px] font-bold uppercase opacity-60">{s.label}</span>
                   <span className="text-sm font-black tabular-nums">₩{formatKrw(s.val)}</span>
                 </div>
               ))}
             </div>
-            <div className="h-8 w-px bg-slate-200 hidden lg:block" />
-            <div className="bg-slate-900 text-white px-4 py-2 rounded-xl flex flex-col items-end shadow-lg ring-4 ring-indigo-500/10">
-              <span className="text-[9px] font-bold text-indigo-300 uppercase tracking-tighter">금회 지급 계획 총액</span>
-              <span className="text-lg font-black tabular-nums">₩{formatKrw(stats.grandTotalPlanned)}</span>
+            
+            <div className="flex items-center gap-3">
+              <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl flex flex-col items-end">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">전체 미수금 총액</span>
+                <span className="text-lg font-black text-slate-600 tabular-nums">₩{formatKrw(stats.totalBalance)}</span>
+              </div>
+              <div className="bg-indigo-600 text-white px-4 py-2 rounded-xl flex flex-col items-end shadow-lg ring-4 ring-indigo-500/10">
+                <span className="text-[9px] font-bold text-indigo-200 uppercase tracking-tighter">금회 지급 계획 총액</span>
+                <span className="text-lg font-black tabular-nums">₩{formatKrw(stats.grandTotalPlanned)}</span>
+              </div>
             </div>
           </div>
         </motion.header>
