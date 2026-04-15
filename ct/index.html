@@ -34,9 +34,106 @@
 <body>
   <div id="root"></div>
   <script type="text/babel" data-type="module">
-    import React, { useState, useEffect, useMemo } from 'react';
+    import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { Package, DollarSign, Users, ListFilter, Tag, Calculator, LayoutDashboard, Edit, ArrowRight, ArrowLeft, ArrowRight as ArrowRightIcon } from 'lucide-react';
+    import { Package, DollarSign, Users, ListFilter, Tag, Calculator, LayoutDashboard, Edit, ArrowRight, ArrowLeft, ArrowRight as ArrowRightIcon, X, ChevronDown, Check, Filter } from 'lucide-react';
+
+// ─── 태그 색상 팔레트 (노션 스타일) ───
+const TAG_COLORS = [
+  { bg: '#e8f0fe', text: '#1a56db', border: '#c3d9f7', name: '파랑' },
+  { bg: '#fef3c7', text: '#b45309', border: '#fde68a', name: '노랑' },
+  { bg: '#d1fae5', text: '#065f46', border: '#a7f3d0', name: '초록' },
+  { bg: '#fce7f3', text: '#9d174d', border: '#fbcfe8', name: '분홍' },
+  { bg: '#ede9fe', text: '#5b21b6', border: '#ddd6fe', name: '보라' },
+  { bg: '#fee2e2', text: '#991b1b', border: '#fecaca', name: '빨강' },
+  { bg: '#f3f4f6', text: '#374151', border: '#d1d5db', name: '회색' },
+  { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0', name: '민트' },
+  { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa', name: '주황' },
+  { bg: '#f0f9ff', text: '#0369a1', border: '#bae6fd', name: '하늘' },
+];
+const getTagColor = (tag, allTags) => {
+  const idx = allTags.indexOf(tag);
+  return TAG_COLORS[idx >= 0 ? idx % TAG_COLORS.length : Math.abs(tag.split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % TAG_COLORS.length];
+};
+
+// ─── 다중선택 태그 컴포넌트 (노션 스타일) ───
+function MultiSelectTags({ selected, allTags, onChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setIsOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  const toggle = (tag) => {
+    if (selected.includes(tag)) onChange(selected.filter(t => t !== tag));
+    else onChange([...selected, tag]);
+  };
+
+  const addNew = () => {
+    const t = newTag.trim();
+    if (!t) return;
+    if (!selected.includes(t)) onChange([...selected, t]);
+    setNewTag('');
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex flex-wrap gap-1 items-center min-h-[28px] px-2 py-1 border border-[#e6e8ea] rounded-lg cursor-pointer hover:border-[#111c2d] transition-colors bg-white min-w-[100px]"
+      >
+        {selected.length === 0 && <span className="text-[10px] text-[#b0b8c4]">분류 선택...</span>}
+        {selected.map(tag => {
+          const c = getTagColor(tag, allTags);
+          return (
+            <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap" style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
+              {tag}
+              <button onClick={(e) => { e.stopPropagation(); toggle(tag); }} className="hover:opacity-60"><X size={10} /></button>
+            </span>
+          );
+        })}
+      </div>
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-[#e6e8ea] w-56 z-50 p-2 max-h-64 overflow-y-auto">
+          <div className="flex gap-1 mb-2">
+            <input
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); addNew(); } }}
+              placeholder="새 분류 입력..."
+              className="flex-1 text-xs px-2 py-1.5 border border-[#e6e8ea] rounded-lg outline-none focus:border-[#111c2d]"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button onClick={(e) => { e.stopPropagation(); addNew(); }} className="px-2 py-1 bg-[#111c2d] text-white text-[10px] font-bold rounded-lg hover:bg-[#2a3a52]">추가</button>
+          </div>
+          {allTags.filter(t => t !== '미지정').map(tag => {
+            const c = getTagColor(tag, allTags);
+            const active = selected.includes(tag);
+            return (
+              <button
+                key={tag}
+                onClick={(e) => { e.stopPropagation(); toggle(tag); }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#f7f9fb] transition-colors text-left"
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center ${active ? 'bg-[#111c2d] border-[#111c2d]' : 'border-[#d1d5db]'}`}>
+                  {active && <Check size={10} className="text-white" />}
+                </div>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold" style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{tag}</span>
+              </button>
+            );
+          })}
+          {allTags.filter(t => t !== '미지정').length === 0 && (
+            <p className="text-center text-[10px] text-[#b0b8c4] py-2">분류를 입력해서 추가하세요</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // 원본 데이터
 const RAW_DATA = `부품명 수량 단가 후공정 금액
@@ -460,8 +557,26 @@ export default function App() {
     };
   }, [items]);
 
-  const handleTypeChange = (vendorName, newType) => {
-    const next = { ...vendorTypes, [vendorName]: newType };
+  // vendorTypes: { 업체명: ["가공", "구매"] } 형태로 다중 선택 지원
+  // 하위호환: 기존 문자열 값이면 배열로 마이그레이션
+  const getVendorTags = (vendorName) => {
+    const val = vendorTypes[vendorName];
+    if (!val) return [];
+    if (typeof val === 'string') return val.trim() ? [val.trim()] : [];
+    return val;
+  };
+
+  const allTagsList = useMemo(() => {
+    const set = new Set();
+    Object.values(vendorTypes).forEach(v => {
+      if (typeof v === 'string') { if (v.trim()) set.add(v.trim()); }
+      else if (Array.isArray(v)) v.forEach(t => { if (t.trim()) set.add(t.trim()); });
+    });
+    return [...set].sort();
+  }, [vendorTypes]);
+
+  const handleTypeChange = (vendorName, newTags) => {
+    const next = { ...vendorTypes, [vendorName]: newTags };
     setVendorTypes(next);
     triggerSave(items, next);
   };
@@ -471,13 +586,43 @@ export default function App() {
     triggerSave(next, vendorTypes);
   };
 
+  // ── 품목 팝업 상태 ──
+  const [vendorPopup, setVendorPopup] = useState(null); // vendor name
+  const vendorPopupItems = useMemo(() => {
+    if (!vendorPopup) return [];
+    return items.filter(i => i.supplier === vendorPopup);
+  }, [vendorPopup, items]);
+
+  // ── 부품 카탈로그 공급업체 필터 ──
+  const [supplierFilter, setSupplierFilter] = useState([]); // 빈 배열 = 전체 표시
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const filterRef = useRef(null);
+  useEffect(() => {
+    const close = (e) => { if (filterRef.current && !filterRef.current.contains(e.target)) setIsFilterOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+  const allSuppliers = useMemo(() => [...new Set(items.map(i => i.supplier))].sort(), [items]);
+  const filteredItems = useMemo(() => {
+    if (supplierFilter.length === 0) return items;
+    return items.filter(i => supplierFilter.includes(i.supplier));
+  }, [items, supplierFilter]);
+
   const typeSummary = useMemo(() => {
     const summary = {};
     vendors.forEach(v => {
-      const t = vendorTypes[v.name]?.trim() || '미지정';
-      if (!summary[t]) summary[t] = { type: t, totalAmount: 0, vendorCount: 0 };
-      summary[t].totalAmount += v.totalAmount;
-      summary[t].vendorCount += 1;
+      const tags = getVendorTags(v.name);
+      if (tags.length === 0) {
+        if (!summary['미지정']) summary['미지정'] = { type: '미지정', totalAmount: 0, vendorCount: 0 };
+        summary['미지정'].totalAmount += v.totalAmount;
+        summary['미지정'].vendorCount += 1;
+      } else {
+        tags.forEach(t => {
+          if (!summary[t]) summary[t] = { type: t, totalAmount: 0, vendorCount: 0 };
+          summary[t].totalAmount += v.totalAmount;
+          summary[t].vendorCount += 1;
+        });
+      }
     });
     return Object.values(summary).sort((a, b) => b.totalAmount - a.totalAmount);
   }, [vendors, vendorTypes]);
@@ -518,6 +663,52 @@ export default function App() {
         }
       }}
     >초기화</button>
+
+    {/* ── 품목 리스트 팝업 ── */}
+    {vendorPopup && (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10000] flex items-center justify-center p-4" onClick={() => setVendorPopup(null)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between p-6 border-b border-[#e6e8ea]">
+            <div>
+              <h3 className="text-lg font-extrabold text-[#111c2d] tracking-tight">{vendorPopup}</h3>
+              <p className="text-xs text-[#54647a] mt-1">{vendorPopupItems.length}개 부품 공급</p>
+            </div>
+            <button onClick={() => setVendorPopup(null)} className="p-2 hover:bg-[#f2f4f6] rounded-xl transition-colors"><X size={20} /></button>
+          </div>
+          <div className="overflow-y-auto flex-1 p-2">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-[#f7f9fb]">
+                <tr>
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-left">부품명</th>
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-center">수량</th>
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-right">단가</th>
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-right">후공정</th>
+                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#111c2d] text-right">합계</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vendorPopupItems.map((item, idx) => (
+                  <tr key={item.id} className="border-b border-[#f2f4f6] hover:bg-[#f7f9fb]">
+                    <td className="px-4 py-3 font-medium text-[#111c2d]">{item.name}</td>
+                    <td className="px-4 py-3 text-center font-mono text-xs text-[#54647a]">{item.qty}</td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-[#54647a]">{new Intl.NumberFormat('ko-KR').format(item.price)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-[#54647a]">{item.postProcess > 0 ? new Intl.NumberFormat('ko-KR').format(item.postProcess) : '-'}</td>
+                    <td className="px-4 py-3 text-right font-bold text-[#111c2d]">{new Intl.NumberFormat('ko-KR').format((item.price * item.qty) + item.postProcess)} 원</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-[#f7f9fb] font-bold">
+                <tr>
+                  <td className="px-4 py-3 text-[#111c2d]" colSpan={4}>합계</td>
+                  <td className="px-4 py-3 text-right text-[#111c2d]">{formatCurrency(vendorPopupItems.reduce((s, i) => s + (i.price * i.qty) + i.postProcess, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    )}
+
     {
     <div className="min-h-screen bg-[#f7f9fb] font-sans text-[#191c1e] flex overflow-hidden">
       
@@ -711,7 +902,16 @@ export default function App() {
                           <td className="px-6 py-4 font-semibold text-[#111c2d] truncate max-w-[200px]" title={v.name}>
                             {v.name}
                           </td>
-                          <td className="px-6 py-4 text-center text-[#54647a] font-mono text-xs">{v.itemCount}</td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={() => setVendorPopup(v.name)}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-[#f2f4f6] hover:bg-[#e6e8ea] text-[#111c2d] rounded-lg font-bold text-xs transition-colors cursor-pointer border border-[#e6e8ea] hover:border-[#111c2d]"
+                              title="클릭하여 부품 목록 보기"
+                            >
+                              {v.itemCount}
+                              <ArrowRight size={12} className="text-[#79849a]" />
+                            </button>
+                          </td>
                           <td className="px-6 py-4 text-right text-[#54647a]">
                             {formatCurrency(v.totalAmount)}
                           </td>
@@ -719,12 +919,10 @@ export default function App() {
                             {formatCurrency(v.totalAmount * productionQty)}
                           </td>
                           <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={vendorTypes[v.name] || ''}
-                              onChange={(e) => handleTypeChange(v.name, e.target.value)}
-                              placeholder="Add type..."
-                              className="w-full px-3 py-1.5 border border-[#e6e8ea] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#111c2d] transition-all bg-white text-xs text-center"
+                            <MultiSelectTags
+                              selected={getVendorTags(v.name)}
+                              allTags={allTagsList}
+                              onChange={(tags) => handleTypeChange(v.name, tags)}
                             />
                           </td>
                         </tr>
@@ -739,10 +937,73 @@ export default function App() {
           {/* Details Tab */}
           {activeTab === 'details' && (
             <div className="bg-white rounded-2xl shadow-sm border border-[#e6e8ea] overflow-hidden animate-in fade-in duration-500 flex flex-col">
-              <div className="p-8 pb-6 border-b border-[#e6e8ea]">
-                <h3 className="font-extrabold text-2xl text-[#111c2d] tracking-tight">부품 카탈로그 및 실시간 편집장</h3>
-                <p className="text-sm text-[#54647a] mt-2">아래 표의 아무 셀이나 클릭하면 실시간으로 데이터를 수정할 수 있습니다. 편집 내용은 시스템 전체 계산에 즉시 반영됩니다.</p>
+              <div className="p-8 pb-6 border-b border-[#e6e8ea] flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                <div>
+                  <h3 className="font-extrabold text-2xl text-[#111c2d] tracking-tight">부품 카탈로그 및 실시간 편집장</h3>
+                  <p className="text-sm text-[#54647a] mt-2">아래 표의 아무 셀이나 클릭하면 실시간으로 데이터를 수정할 수 있습니다.</p>
+                </div>
+                {/* 공급업체 필터 (엑셀 스타일) */}
+                <div ref={filterRef} className="relative">
+                  <button
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                    className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl border transition-colors ${
+                      supplierFilter.length > 0
+                        ? 'bg-[#111c2d] text-white border-[#111c2d]'
+                        : 'bg-white text-[#54647a] border-[#e6e8ea] hover:border-[#111c2d]'
+                    }`}
+                  >
+                    <Filter size={14} />
+                    {supplierFilter.length > 0 ? `${supplierFilter.length}개 업체 필터` : '공급업체 필터'}
+                    <ChevronDown size={14} />
+                  </button>
+                  {isFilterOpen && (
+                    <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-[#e6e8ea] w-64 z-50 max-h-80 overflow-hidden flex flex-col">
+                      <div className="p-3 border-b border-[#e6e8ea] flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase text-[#79849a]">공급업체 선택</span>
+                        <button
+                          onClick={() => { setSupplierFilter([]); setIsFilterOpen(false); }}
+                          className="text-[10px] font-bold text-[#111c2d] hover:underline"
+                        >{supplierFilter.length > 0 ? '전체 해제' : '전체 선택'}</button>
+                      </div>
+                      <div className="overflow-y-auto flex-1 p-1">
+                        {allSuppliers.map(s => {
+                          const active = supplierFilter.includes(s);
+                          const count = items.filter(i => i.supplier === s).length;
+                          return (
+                            <button
+                              key={s}
+                              onClick={() => {
+                                if (active) setSupplierFilter(supplierFilter.filter(x => x !== s));
+                                else setSupplierFilter([...supplierFilter, s]);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#f7f9fb] transition-colors text-left"
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${active ? 'bg-[#111c2d] border-[#111c2d]' : 'border-[#d1d5db]'}`}>
+                                {active && <Check size={10} className="text-white" />}
+                              </div>
+                              <span className="text-xs font-medium text-[#111c2d] truncate flex-1">{s}</span>
+                              <span className="text-[10px] text-[#79849a] font-mono">{count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {supplierFilter.length > 0 && (
+                <div className="px-8 py-2 bg-[#f7f9fb] border-b border-[#e6e8ea] flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold text-[#79849a] uppercase">필터:</span>
+                  {supplierFilter.map(s => (
+                    <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#111c2d] text-white rounded-md text-[10px] font-bold">
+                      {s}
+                      <button onClick={() => setSupplierFilter(supplierFilter.filter(x => x !== s))} className="hover:opacity-60"><X size={10} /></button>
+                    </span>
+                  ))}
+                  <button onClick={() => setSupplierFilter([])} className="text-[10px] font-bold text-[#79849a] hover:text-[#111c2d] ml-2">전체 보기</button>
+                </div>
+              )}
               
               <div className="overflow-x-auto max-h-[calc(100vh-350px)]">
                 <table className="w-full text-left border-collapse relative">
@@ -758,7 +1019,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="text-sm">
-                    {items.map((item, idx) => (
+                    {filteredItems.map((item, idx) => (
                       <tr key={item.id} className="hover:bg-[#f7f9fb] border-b border-[#f2f4f6] focus-within:bg-[#f2f4f6]/50 transition-colors">
                         <td className="px-4 py-3 text-center text-[#79849a] font-mono text-xs">{String(idx + 1).padStart(2, '0')}</td>
                         <td className="px-4 py-3">
@@ -812,6 +1073,12 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              {supplierFilter.length > 0 && (
+                <div className="px-8 py-3 bg-[#f7f9fb] border-t border-[#e6e8ea] flex items-center justify-between">
+                  <span className="text-xs text-[#54647a]">필터된 부품: <strong className="text-[#111c2d]">{filteredItems.length}</strong>개 / 전체 {items.length}개</span>
+                  <span className="text-xs font-bold text-[#111c2d]">필터 합계: {formatCurrency(filteredItems.reduce((s, i) => s + (i.price * i.qty) + i.postProcess, 0))}</span>
+                </div>
+              )}
             </div>
           )}
 
