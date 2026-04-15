@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>통합 원가 관리</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAkFBrT8Zibdtaw6iw6Qgp-nrF3wN2V7ek",
+      authDomain: "dcl100l.firebaseapp.com",
+      projectId: "dcl100l",
+      storageBucket: "dcl100l.firebasestorage.app",
+      messagingSenderId: "423636580318",
+      appId: "1:423636580318:web:316191480f56aa407a0f4f"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+  </script>
   <script type="importmap">
     {
       "imports": {
@@ -351,46 +366,72 @@ FND후드, 대구경열상용 1 600 - 600 한국아이현
 
 const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value) + ' 원';
 
+// ─────────────────────────── RAW_DATA 파서 (초기값 생성용) ───────────────────────────
+function parseRawData() {
+  const lines = RAW_DATA.split('\n').map(l => l.trim()).filter(l => l && !l.includes('부품명 수량 단가'));
+  return lines.map((line, index) => {
+    const regex = /^(.*?)\s+(\d+)\s+([\d,\-]+)\s+(?:([\d,\-]+)\s+)?([\d,\-]+)\s+(\S+)$/;
+    const match = line.match(regex);
+    let name, qty, price, postProcess, supplier;
+    if (match) {
+      name = match[1].trim();
+      qty = parseInt(match[2].replace(/,/g, ''), 10) || 0;
+      price = match[3] === '-' ? 0 : parseInt(match[3].replace(/,/g, ''), 10) || 0;
+      postProcess = match[4] ? (match[4] === '-' ? 0 : parseInt(match[4].replace(/,/g, ''), 10)) : 0;
+      supplier = match[6].trim();
+    } else {
+      const tokens = line.split(/\s+/);
+      if (tokens.length >= 3) {
+        supplier = tokens.pop();
+        const totalStr = tokens.pop();
+        const totalFallback = totalStr === '-' ? 0 : parseInt(totalStr.replace(/,/g, ''), 10) || 0;
+        qty = 1; price = totalFallback; postProcess = 0;
+        name = tokens.join(' ');
+      } else { return null; }
+    }
+    return { id: index, name, qty, price, postProcess, supplier };
+  }).filter(Boolean);
+}
+
 export default function App() {
   const [items, setItems] = useState([]);
   const [vendorTypes, setVendorTypes] = useState({});
   const [productionQty, setProductionQty] = useState(1);
   const [activeTab, setActiveTab] = useState('summary');
+  const [isLoading, setIsLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+  const saveTimer = React.useRef(null);
 
-  // 데이터 파싱
+  // ─── Firebase에서 데이터 로드 ───
   useEffect(() => {
-    const lines = RAW_DATA.split('\n').map(l => l.trim()).filter(l => l && !l.includes('부품명 수량 단가'));
-    
-    const initialItems = lines.map((line, index) => {
-      const regex = /^(.*?)\s+(\d+)\s+([\d,\-]+)\s+(?:([\d,\-]+)\s+)?([\d,\-]+)\s+(\S+)$/;
-      const match = line.match(regex);
-      
-      let name, qty, price, postProcess, supplier;
-
-      if (match) {
-        name = match[1].trim();
-        qty = parseInt(match[2].replace(/,/g, ''), 10) || 0;
-        price = match[3] === '-' ? 0 : parseInt(match[3].replace(/,/g, ''), 10) || 0;
-        postProcess = match[4] ? (match[4] === '-' ? 0 : parseInt(match[4].replace(/,/g, ''), 10)) : 0;
-        supplier = match[6].trim();
-      } else {
-        const tokens = line.split(/\s+/);
-        if (tokens.length >= 3) {
-          supplier = tokens.pop();
-          const totalStr = tokens.pop();
-          const totalFallback = totalStr === '-' ? 0 : parseInt(totalStr.replace(/,/g, ''), 10) || 0;
-          qty = 1; 
-          price = totalFallback;
-          postProcess = 0;
-          name = tokens.join(' ');
+    setIsLoading(true);
+    db.collection('costingTool').doc('state').get()
+      .then(doc => {
+        if (doc.exists && doc.data().items && doc.data().items.length > 0) {
+          setItems(doc.data().items);
+          setVendorTypes(doc.data().vendorTypes || {});
         } else {
-          return null;
+          // Firebase에 데이터 없으면 RAW_DATA로 초기화
+          setItems(parseRawData());
         }
-      }
-      return { id: index, name, qty, price, postProcess, supplier };
-    }).filter(Boolean);
+      })
+      .catch(() => setItems(parseRawData()))
+      .finally(() => setIsLoading(false));
+  }, []);
 
-    setItems(initialItems);
+  // ─── 자동 저장 (debounce 1000ms) ───
+  const triggerSave = React.useCallback((nextItems, nextVendorTypes) => {
+    setSaveStatus('saving');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      db.collection('costingTool').doc('state').set({
+        items: nextItems,
+        vendorTypes: nextVendorTypes,
+        updatedAt: new Date().toISOString()
+      })
+        .then(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000); })
+        .catch(() => setSaveStatus('error'));
+    }, 1000);
   }, []);
 
   // 통계 계산
@@ -419,8 +460,16 @@ export default function App() {
     };
   }, [items]);
 
-  const handleTypeChange = (vendorName, newType) => setVendorTypes(prev => ({ ...prev, [vendorName]: newType }));
-  const handleItemUpdate = (id, field, value) => setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+  const handleTypeChange = (vendorName, newType) => {
+    const next = { ...vendorTypes, [vendorName]: newType };
+    setVendorTypes(next);
+    triggerSave(items, next);
+  };
+  const handleItemUpdate = (id, field, value) => {
+    const next = items.map(item => item.id === id ? { ...item, [field]: value } : item);
+    setItems(next);
+    triggerSave(next, vendorTypes);
+  };
 
   const typeSummary = useMemo(() => {
     const summary = {};
@@ -436,7 +485,40 @@ export default function App() {
   const maxAmount = vendors.length > 0 ? vendors[0].totalAmount * productionQty : 1;
   const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+  if (isLoading) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#f7f9fb]">
+      <div className="text-center">
+        <div className="text-4xl mb-4">⏳</div>
+        <p className="font-bold text-[#54647a]">데이터를 불러오는 중...</p>
+      </div>
+    </div>
+  );
+
   return (
+    <>
+    {/* 저장 상태 인디케이터 */}
+    {saveStatus !== 'idle' && (
+      <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999,
+        background: saveStatus === 'saved' ? '#10b981' : saveStatus === 'error' ? '#ef4444' : '#6366f1',
+        color: 'white', padding: '8px 16px', borderRadius: 8, fontWeight: 700, fontSize: 13,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+        {saveStatus === 'saving' ? '저장 중...' : saveStatus === 'saved' ? '저장됨 ✓' : '저장 실패 ✗'}
+      </div>
+    )}
+    {/* 데이터 초기화 버튼 (숨김 - 관리자용) */}
+    <button
+      style={{ position: 'fixed', bottom: 20, left: 20, zIndex: 9999, background: '#f1f5f9',
+        border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 12px', fontSize: 11, cursor: 'pointer', color: '#94a3b8' }}
+      onClick={() => {
+        if (confirm('데이터를 원본(하드코딩 기본값)으로 초기화할까요? 현재 수정 내용이 모두 사라집니다.')) {
+          const init = parseRawData();
+          setItems(init);
+          setVendorTypes({});
+          triggerSave(init, {});
+        }
+      }}
+    >초기화</button>
+    {
     <div className="min-h-screen bg-[#f7f9fb] font-sans text-[#191c1e] flex overflow-hidden">
       
       {/* Sidebar - Dark theme matching the prompt */}
@@ -754,6 +836,8 @@ export default function App() {
         </button>
       </nav>
     </div>
+    }
+    </>
   );
 }
 
