@@ -733,6 +733,23 @@
                 return () => el.removeEventListener('wheel', onNativeWheel);
             }, [pct, pan, currentAsmId, isAdmin]);
 
+            // ── AI 붙여넣기 감지 (paste) - 반드시 early return 이전에 위치해야 함 (Rules of Hooks) ──
+            useEffect(() => {
+                if (!isAdmin) return;
+                const handlePaste = (e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                            const blob = items[i].getAsFile();
+                            if (blob) { performImageAiAnalysis(blob); break; }
+                        }
+                    }
+                };
+                window.addEventListener('paste', handlePaste);
+                return () => window.removeEventListener('paste', handlePaste);
+            }, [isAdmin, currentAsmId]);
+
             if (!userRole) return <Login onLogin={handleLogin} />;
 
             if (!isLoaded) return (
@@ -937,21 +954,7 @@
               }
             };
 
-            useEffect(() => {
-                if (!isAdmin) return;
-                const handlePaste = (e) => {
-                    const items = e.clipboardData?.items;
-                    if (!items) return;
-                    for (let i = 0; i < items.length; i++) {
-                        if (items[i].type.indexOf('image') !== -1) {
-                            const blob = items[i].getAsFile();
-                            if (blob) { performImageAiAnalysis(blob); break; }
-                        }
-                    }
-                };
-                window.addEventListener('paste', handlePaste);
-                return () => window.removeEventListener('paste', handlePaste);
-            }, [isAdmin, currentAsmId]);
+            // [위로 이동됨] paste useEffect는 early return 이전에 정의됨
 
             const updatePart = (partId, field, value) => {
                 if (!isAdmin) return;
