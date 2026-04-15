@@ -13,6 +13,14 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
     <!-- Firebase SDK End -->
+    <!-- Google GenAI SDK -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { 
@@ -350,6 +358,24 @@
             const [currentProductId, setCurrentProductId] = useState(null);
             const [assemblies, setAssemblies] = useState([]);
             const [currentAsmId, setCurrentAsmId] = useState(null);
+            const [isSupplyMode, setIsSupplyMode] = useState(false);
+            const [activePopoverPartId, setActivePopoverPartId] = useState(null);
+            const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 });
+
+            // --- AI Analysis States ---
+            const [pendingAiImage, setPendingAiImage] = useState(null);
+            const [customAiInstruction, setCustomAiInstruction] = useState("");
+            const [isAiProcessing, setIsAiProcessing] = useState(false);
+            const [aiError, setAiError] = useState(null);
+            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+            const [localApiKey, setLocalApiKey] = useState(localStorage.getItem('gemini_api_key_inventory') || "");
+
+            const saveApiKey = (key) => {
+                localStorage.setItem('gemini_api_key_inventory', key);
+                setLocalApiKey(key);
+                setIsSettingsOpen(false);
+            };
+
             const [selectedPartId, setSelectedPartId] = useState(null);
             const [dragState, setDragState] = useState(null);
             const [isLoaded, setIsLoaded] = useState(false);
@@ -367,10 +393,6 @@
             const [pan, setPan] = useState({ x: 0, y: 0 });
             const [zoomLocked, setZoomLocked] = useState(false);
             const [isPanning, setIsPanning] = useState(false);
-            const [isSupplyMode, setIsSupplyMode] = useState(false); // 제작처 모드
-            const [activePopoverPartId, setActivePopoverPartId] = useState(null); // 활성화된 말풍선 팝업 ID
-            const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 }); // 말풍선 절대 위치
-
             const viewportRef = useRef(null);
             const containerRef = useRef(null);
             const panStart = useRef(null);
@@ -472,6 +494,10 @@
                     }
                 }, 500);
             }, [isAdmin]);
+
+            const saveToFirebase = async (asms) => {
+                await API.saveAll(asms, currentAsmId, products, currentProductId, financeData);
+            };
 
             // 변경 시 자동 저장 트리거
             useEffect(() => {
@@ -598,10 +624,6 @@
                 }
 
                 setAssemblies(nextAsms);
-                // autoSave가 useEffect를 통해 처리하지만, 즉각적인 저장이 필요하거나 
-                // 다른 항목을 건드리는 경우 여기서도 saveAll을 명시적으로 호출할 수 있습니다.
-                // 하지만 race condition을 막기 위해 autoSave 하나로 통합하는 것이 안전합니다.
-                // (type === 'levelUp', 'levelDown' 등은 전체 구조가 바뀌므로 autoSave가 인지함)
             };
 
             // 재귀적 트리 렌더러
@@ -829,6 +851,107 @@
                 ));
                 if (selectedPartId === partId) setSelectedPartId(null);
             };
+
+            // ── AI 이미지 분석 기능 ──
+            const performImageAiAnalysis = async (file) => {
+                if (!isAdmin) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    setPendingAiImage(reader.result);
+                    setCustomAiInstruction("");
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const processInventoryImageWithGemini = async (base64Image, instruction) => {
+              if (!localApiKey) throw new Error("분석을 위해 설정에서 Gemini API Key를 입력해주세요.");
+              const { GoogleGenerativeAI } = await import("@google/generative-ai");
+              const genAI = new GoogleGenerativeAI(localApiKey);
+              const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+              const prompt = `
+                You are an expert in inventory management. 
+                Extract stock quantities from the provided image (drawing, spreadsheet screenshot, or list).
+                Find part numbers and their current stock quantities.
+                Return ONLY a JSON array in this format: [{"no": "part_number", "stock": 100}].
+                - Try to match the part numbers accurately.
+                - If you find multiple quantities for the same part, sum them up.
+                - Instruction from user: ${instruction}
+              `;
+
+              const result = await model.generateContent([
+                prompt,
+                { inlineData: { data: base64Image.split(",")[1], mimeType: "image/jpeg" } }
+              ]);
+              
+              const text = result.response.text();
+              const jsonMatch = text.match(/\[.*\]/s);
+              if (!jsonMatch) throw new Error("데이터 추출 실패 (JSON 형식을 찾을 수 없음)");
+              return JSON.parse(jsonMatch[0]);
+            };
+
+            const executeInventoryAiAnalysis = async () => {
+              if (!pendingAiImage) return;
+              setIsAiProcessing(true);
+              setAiError(null);
+              try {
+                const extractedData = await processInventoryImageWithGemini(pendingAiImage, customAiInstruction);
+                
+                // 현재 활성화된 조립체의 파트 리스트 업데이트
+                const nextAssemblies = [...assemblies];
+                const asmIdx = nextAssemblies.findIndex(a => a.id === currentAsmId);
+                if (asmIdx === -1) return;
+
+                const targetAsm = { ...nextAssemblies[asmIdx] };
+                const nextParts = [...targetAsm.parts];
+
+                extractedData.forEach(newItem => {
+                  const pIdx = nextParts.findIndex(p => p.no.trim() === newItem.no.trim());
+                  if (pIdx !== -1) {
+                    nextParts[pIdx] = { ...nextParts[pIdx], stock: newItem.stock };
+                  } else if (customAiInstruction.includes("신규") || customAiInstruction.includes("추가")) {
+                    // 신규 파트 추가 (선택사항)
+                    const newId = Date.now() + Math.random();
+                    nextParts.push({
+                      id: newId,
+                      no: newItem.no.trim(),
+                      name: "AI 추출 신규 부품",
+                      stock: newItem.stock,
+                      x: 50, y: 50, size: 40, fSize: 14, wNo: 4, wName: 13, wStock: 3, reqQty: 1
+                    });
+                  }
+                });
+
+                targetAsm.parts = nextParts;
+                nextAssemblies[asmIdx] = targetAsm;
+                
+                setAssemblies(nextAssemblies);
+                await saveToFirebase(nextAssemblies);
+                setPendingAiImage(null);
+                alert("재고 데이터 업데이트가 완료되었습니다.");
+              } catch (err) { 
+                console.error(err);
+                setAiError(err.message); 
+              } finally { 
+                setIsAiProcessing(false); 
+              }
+            };
+
+            useEffect(() => {
+                if (!isAdmin) return;
+                const handlePaste = (e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                            const blob = items[i].getAsFile();
+                            if (blob) { performImageAiAnalysis(blob); break; }
+                        }
+                    }
+                };
+                window.addEventListener('paste', handlePaste);
+                return () => window.removeEventListener('paste', handlePaste);
+            }, [isAdmin, currentAsmId]);
 
             const updatePart = (partId, field, value) => {
                 if (!isAdmin) return;
@@ -1102,6 +1225,20 @@
                                         <i className="fa-solid fa-trash"></i> 삭제
                                     </button>
                                     {/* ── 자금계획 바로가기 (관리자 전용) ── */}
+                                    <button
+                                        onClick={() => setIsSettingsOpen(true)}
+                                        className="flex-shrink-0 flex items-center gap-1.5 bg-slate-600 hover:bg-slate-500 px-3 py-2 rounded text-sm font-bold transition text-white shadow-sm"
+                                        title="AI 분석 설정"
+                                    >
+                                        <i className="fa-solid fa-gear"></i>
+                                    </button>
+                                    <button
+                                        onClick={() => window.location.href = 'ct/index.html'}
+                                        className="flex-shrink-0 flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-400 active:bg-indigo-600 px-3 py-2 rounded text-sm font-bold transition text-white shadow-sm shadow-indigo-500/30"
+                                        title="통합원가 관리"
+                                    >
+                                        <i className="fa-solid fa-calculator"></i> 통합원가 관리
+                                    </button>
                                     <button
                                         onClick={() => window.location.href = 'jk_build/index.html'}
                                         className="flex-shrink-0 flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 px-3 py-2 rounded text-sm font-bold transition text-white shadow-sm shadow-amber-500/30"
@@ -1637,6 +1774,98 @@
                             </div>
                         </div>
                     </div>
+
+                    {/* ── AI 분석 설정 모달 ── */}
+                    {isSettingsOpen && (
+                        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                            <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md border border-slate-100">
+                                <h2 className="text-2xl font-black mb-6 flex items-center gap-3">
+                                    <i className="fa-solid fa-robot text-blue-600"></i> AI 분석 설정
+                                </h2>
+                                <div className="space-y-4">
+                                    <label className="block text-sm font-bold text-slate-700">Gemini API Key</label>
+                                    <input 
+                                        type="password" 
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-all font-mono"
+                                        placeholder="API 키를 입력하세요..."
+                                        value={localApiKey}
+                                        onChange={(e) => setLocalApiKey(e.target.value)}
+                                    />
+                                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                                        * 입력하신 API 키는 서버에 저장되지 않고, 오직 현재 브라우저의 로컬 스토리지에만 보관됩니다.
+                                    </p>
+                                    <div className="flex gap-3 pt-4">
+                                        <button onClick={() => setIsSettingsOpen(false)} className="flex-1 p-4 rounded-2xl font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">닫기</button>
+                                        <button onClick={() => saveApiKey(localApiKey)} className="flex-2 p-4 rounded-2xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all">저장하기</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── AI 이미지 분석 대기 모달 ── */}
+                    {pendingAiImage && (
+                        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+                            <div className="bg-white rounded-[2.5rem] p-8 max-w-5xl w-full grid grid-cols-1 lg:grid-cols-2 gap-8 items-start shadow-2xl">
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="font-black text-slate-500 uppercase tracking-widest text-xs">Image Preview</h3>
+                                        <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-1 rounded font-bold">CLIPBOARD DATA</span>
+                                    </div>
+                                    <img src={pendingAiImage} className="w-full rounded-3xl shadow-inner border border-slate-100 bg-slate-50" />
+                                </div>
+                                <div className="flex flex-col gap-6 h-full">
+                                    <div className="space-y-1">
+                                        <h2 className="text-3xl font-black text-slate-800">재고 데이터 분석 현황</h2>
+                                        <p className="text-slate-400 font-medium">이미지를 분석하여 현재 조립체의 재고량을 자동 업데이트합니다.</p>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap gap-2">
+                                      {["품번 매칭하여 재고 업데이트", "신규 부품도 추가해줘", "미수금 대신 재고량 추출", "테이블 전체 자동 매칭"].map(chip => (
+                                        <button
+                                          key={chip}
+                                          onClick={() => setCustomAiInstruction(prev => prev ? `${prev}, ${chip}` : chip)}
+                                          className="px-4 py-2 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 rounded-full text-xs font-bold transition-all border border-transparent hover:border-blue-200"
+                                        >
+                                          + {chip}
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    <div className="flex-grow flex flex-col gap-2">
+                                        <label className="text-xs font-black text-slate-400 uppercase ml-2">Custom Instructions</label>
+                                        <textarea 
+                                            value={customAiInstruction} 
+                                            onChange={e => setCustomAiInstruction(e.target.value)} 
+                                            className="w-full flex-grow p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] outline-none text-lg font-medium focus:border-blue-500 transition-all resize-none" 
+                                            placeholder="추가 요청사항을 입력하거나 위 버튼을 눌러보세요..." 
+                                        />
+                                    </div>
+
+                                    {aiError && (
+                                        <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold border border-red-100 flex items-center gap-3">
+                                            <i className="fa-solid fa-circle-exclamation"></i> {aiError}
+                                        </div>
+                                    )}
+
+                                    <div className="flex gap-4 pt-4">
+                                        <button onClick={() => setPendingAiImage(null)} className="flex-1 text-slate-400 font-black hover:text-slate-600 transition-colors">취소</button>
+                                        <button 
+                                            onClick={executeInventoryAiAnalysis} 
+                                            disabled={isAiProcessing} 
+                                            className="flex-[2] bg-blue-600 text-white p-6 rounded-[2rem] font-black text-xl shadow-xl shadow-blue-600/30 disabled:opacity-50 hover:bg-blue-700 transition-all flex items-center justify-center gap-3"
+                                        >
+                                            {isAiProcessing ? (
+                                                <><i className="fa-solid fa-circle-notch fa-spin"></i> 분석 중...</>
+                                            ) : (
+                                                <><i className="fa-solid fa-wand-magic-sparkles"></i> AI로 재고 업데이트</>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
