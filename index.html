@@ -359,6 +359,7 @@
             const [assemblies, setAssemblies] = useState([]);
             const [currentAsmId, setCurrentAsmId] = useState(null);
             const [isSupplyMode, setIsSupplyMode] = useState(false);
+            const [isOrderStatusMode, setIsOrderStatusMode] = useState(false);
             const [activePopoverPartId, setActivePopoverPartId] = useState(null);
             const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 });
 
@@ -1326,6 +1327,14 @@
                                 </div>
                                 <div className="flex gap-2">
                                     <button
+                                        onClick={() => { setIsOrderStatusMode(!isOrderStatusMode); setActivePopoverPartId(null); }}
+                                        className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isOrderStatusMode ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'}`}
+                                        title={isOrderStatusMode ? '발주현황 끄기' : '발주현황 켜기'}
+                                    >
+                                        <i className={`fa-solid fa-truck-fast`}></i>
+                                        {isOrderStatusMode ? '발주현황 ON' : '발주현황'}
+                                    </button>
+                                    <button
                                         onClick={() => { setIsSupplyMode(!isSupplyMode); setActivePopoverPartId(null); }}
                                         className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isSupplyMode ? 'bg-orange-600 text-white border-orange-700' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}
                                         title={isSupplyMode ? '제작처 모드 끄기' : '제작처 보기 및 입력 모드 시작'}
@@ -1445,10 +1454,10 @@
                                                                 </foreignObject>
                                                                 
                                                                 {/* 품번 칸 */}
-                                                                <rect x={fs * 2} y="0" width={fs * wn} height={fs * 2.2} fill="#fff" stroke="#000" strokeWidth="1" />
+                                                                <rect x={fs * 2} y="0" width={fs * wn} height={fs * 2.2} fill={isOrderStatusMode ? "#e0e7ff" : "#fff"} stroke="#000" strokeWidth="1" />
                                                                 <foreignObject x={fs * 2.3} y="0" width={fs * (wn - 0.6)} height={fs * 2.2}>
-                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', fontSize: fs + 'px', fontWeight: 'bold', lineHeight: 'normal', color: part.no ? '#000' : '#9ca3af', fontFamily: 'monospace', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                                                        {part.no || '—'}
+                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', fontSize: fs + 'px', fontWeight: 'bold', lineHeight: 'normal', color: (isOrderStatusMode ? part.orderProgress : part.no) ? '#000' : '#9ca3af', fontFamily: isOrderStatusMode ? 'sans-serif' : 'monospace', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                                        {isOrderStatusMode ? (part.orderProgress || '대기') : (part.no || '—')}
                                                                     </div>
                                                                 </foreignObject>
                                                                 
@@ -1744,8 +1753,26 @@
                                                         <td className="p-2 pb-3 mb-1" colSpan="2">
                                                             <div className="flex gap-2 items-center text-xs pl-2">
                                                                 <i className="fa-solid fa-arrow-turn-up rotate-90 text-gray-300"></i>
-                                                                <span className="font-semibold text-gray-600 whitespace-nowrap text-[11px]">입고 상태:</span>
-                                                                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold whitespace-nowrap ${statusColor}`}>{statusText}</span>
+                                                                <span className={`font-semibold whitespace-nowrap text-[11px] ${isOrderStatusMode ? 'text-indigo-600' : 'text-gray-600'}`}>
+                                                                    {isOrderStatusMode ? '진행사항:' : '입고 상태:'}
+                                                                </span>
+                                                                {isOrderStatusMode ? (
+                                                                    isAdmin ? (
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={part.orderProgress || ''} 
+                                                                            onChange={(e)=>updatePart(part.id, 'orderProgress', e.target.value)} 
+                                                                            placeholder="진행사항 입력..."
+                                                                            className="w-full max-w-[120px] text-[10px] px-1.5 py-0.5 border border-indigo-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none bg-indigo-50 font-bold text-indigo-800"
+                                                                        />
+                                                                    ) : (
+                                                                        <span className="px-2 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 text-[10px] font-bold whitespace-nowrap truncate w-full max-w-[120px] block">
+                                                                            {part.orderProgress || '대기'}
+                                                                        </span>
+                                                                    )
+                                                                ) : (
+                                                                    <span className={`px-2 py-0.5 rounded border text-[10px] font-bold whitespace-nowrap ${statusColor}`}>{statusText}</span>
+                                                                )}
                                                             </div>
                                                         </td>
                                                         <td className="p-2 pb-3 mb-1 bg-gray-50/50">
