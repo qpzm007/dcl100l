@@ -1434,6 +1434,8 @@
                                                     else if (stock > 0 && stock < totalReq) { stockColor = '#f59e0b'; }
                                                     else if (stock >= totalReq) { stockColor = '#10b981'; }
 
+                                                    const defaultOrderStatus = (stock >= totalReq) ? '완료' : '대기';
+
                                                     return (
                                                         <svg 
                                                             width={totalW} 
@@ -1454,10 +1456,10 @@
                                                                 </foreignObject>
                                                                 
                                                                 {/* 품번 칸 */}
-                                                                <rect x={fs * 2} y="0" width={fs * wn} height={fs * 2.2} fill={isOrderStatusMode ? "#e0e7ff" : "#fff"} stroke="#000" strokeWidth="1" />
+                                                                <rect x={fs * 2} y="0" width={fs * wn} height={fs * 2.2} fill={isOrderStatusMode ? stockColor : "#fff"} stroke="#000" strokeWidth="1" />
                                                                 <foreignObject x={fs * 2.3} y="0" width={fs * (wn - 0.6)} height={fs * 2.2}>
-                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', fontSize: fs + 'px', fontWeight: 'bold', lineHeight: 'normal', color: (isOrderStatusMode ? part.orderProgress : part.no) ? '#000' : '#9ca3af', fontFamily: isOrderStatusMode ? 'sans-serif' : 'monospace', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                                                        {isOrderStatusMode ? (part.orderProgress || '대기') : (part.no || '—')}
+                                                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', fontSize: fs + 'px', fontWeight: 'bold', lineHeight: 'normal', color: isOrderStatusMode ? stockTextColor : (part.no ? '#000' : '#9ca3af'), fontFamily: isOrderStatusMode ? 'sans-serif' : 'monospace', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                                        {isOrderStatusMode ? (part.orderProgress || defaultOrderStatus) : (part.no || '—')}
                                                                     </div>
                                                                 </foreignObject>
                                                                 
@@ -1704,6 +1706,8 @@
                                             if (stock > 0 && stock < totalReq) { statusText = '입고 중'; statusColor = 'text-amber-600 bg-amber-50 border-amber-200'; }
                                             else if (stock >= totalReq) { statusText = '입고 완료'; statusColor = 'text-emerald-600 bg-emerald-50 border-emerald-200'; }
 
+                                            const defaultOrderStatus = (stock >= totalReq) ? '완료' : '대기';
+
                                             return (
                                                 <tbody key={part.id} className={`border-b-2 transition-colors cursor-pointer ${selectedPartId === part.id ? 'bg-blue-50/50' : 'hover:bg-slate-50/50'}`} onClick={() => setSelectedPartId(part.id)}>
                                                     
@@ -1762,12 +1766,12 @@
                                                                             type="text" 
                                                                             value={part.orderProgress || ''} 
                                                                             onChange={(e)=>updatePart(part.id, 'orderProgress', e.target.value)} 
-                                                                            placeholder="진행사항 입력..."
+                                                                            placeholder={`진행사항 입력 (기본: ${defaultOrderStatus})...`}
                                                                             className="w-full max-w-[120px] text-[10px] px-1.5 py-0.5 border border-indigo-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none bg-indigo-50 font-bold text-indigo-800"
                                                                         />
                                                                     ) : (
                                                                         <span className="px-2 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 text-[10px] font-bold whitespace-nowrap truncate w-full max-w-[120px] block">
-                                                                            {part.orderProgress || '대기'}
+                                                                            {part.orderProgress || defaultOrderStatus}
                                                                         </span>
                                                                     )
                                                                 ) : (
