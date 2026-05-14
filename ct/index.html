@@ -377,7 +377,7 @@ function updateTotals() {
   document.getElementById('m-active-vendors').textContent = activeData.length;
   document.getElementById('m-total-vendors').textContent = tableData.length;
   
-  document.querySelectorAll('.m-sub-qty').forEach(el => el.textContent = \`수량 \${fmtNum(currentQty)}개 기준\`);
+  document.querySelectorAll('.m-sub-qty').forEach(el => el.textContent = `수량 ${fmtNum(currentQty)}개 기준`);
 
   // 2. 푸터(Footer) 업데이트
   document.getElementById('f-items').textContent = fmtNum(activeItemsTotal * currentQty);
@@ -406,7 +406,7 @@ function updateTotals() {
     rows[i].querySelector('.pct-text').textContent = row.active ? pctVal.toFixed(1) + '%' : '0.0%';
     
     const barFill = rows[i].querySelector('.bar-fill');
-    barFill.style.width = \`\${Math.min(barWidth, 100)}%\`;
+    barFill.style.width = `${Math.min(barWidth, 100)}%`;
     
     // 순위에 따른 바 색상 배정
     let barColorClass = 'bg-blue-300';
@@ -415,7 +415,7 @@ function updateTotals() {
     else if (topIds[1] === row.id) barColorClass = 'bg-[#5A88C5]'; // 2위
     else if (topIds[2] === row.id) barColorClass = 'bg-[#82AADB]'; // 3위
     
-    barFill.className = \`bar-fill h-full transition-all duration-500 ease-out \${barColorClass}\`;
+    barFill.className = `bar-fill h-full transition-all duration-500 ease-out ${barColorClass}`;
   });
 
   // 헤더 체크박스 상태 갱신
