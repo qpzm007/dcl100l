@@ -244,6 +244,7 @@ function saveToFirebase() {
     db.collection('costingTool').doc('spreadsheet_state').set({
       tableData: tableData,
       currentQty: currentQty,
+      batchPrepay: document.getElementById('batchPrepayInput').value,
       updatedAt: new Date().toISOString()
     }).then(() => {
       const ind = document.getElementById('saveIndicator');
@@ -259,6 +260,9 @@ function init() {
       tableData = doc.data().tableData;
       currentQty = doc.data().currentQty || 1;
       document.getElementById('qtyInput').value = currentQty;
+      if (doc.data().batchPrepay !== undefined) {
+        document.getElementById('batchPrepayInput').value = doc.data().batchPrepay;
+      }
     } else {
       tableData = rawData.map((d, i) => ({ ...d, id: Date.now() + i, active: true, prepayPct: 0 }));
       currentQty = 1;
@@ -531,16 +535,22 @@ function setupEventListeners() {
     saveToFirebase();
   });
 
+  // 선지급률 인풋 자체 값이 변경될 때도 상태 저장
+  document.getElementById('batchPrepayInput').addEventListener('input', () => {
+    saveToFirebase();
+  });
+
   // 수량 직접 입력 변경
   const qtyInput = document.getElementById('qtyInput');
   qtyInput.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
-    if (v > 0) {
+    if (!isNaN(v) && v > 0) {
       currentQty = v;
       updateTotals();
       updatePresetButtons();
-      saveToFirebase();
     }
+    // 수량이 비어있거나 올바르지 않더라도 텍스트 상자 자체의 값 유지를 위해 저장을 트리거합니다
+    saveToFirebase();
   });
 
   // 수량 프리셋 버튼 클릭
