@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>통합 원가 관리</title>
+  <title>제조 원가 수량별 계산기 - 스프레드시트 버전</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -20,1096 +20,592 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
   </script>
-  <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0?dev",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev",
-        "lucide-react": "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0"
-      }
+  <style>
+    /* 스크롤바 컴팩트화 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    /* 엑셀 스타일 입력창 */
+    .cell-input {
+      width: 100%;
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 2px 4px;
+      outline: none;
+      border-radius: 2px;
+      transition: all 0.15s ease-in-out;
+      font-family: inherit;
     }
-  </script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    .cell-input:hover:not(:focus) {
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
+    .cell-input:focus {
+      border-color: #3b82f6;
+      background: #ffffff;
+      box-shadow: inset 0 0 0 1px #3b82f6;
+      z-index: 10;
+      position: relative;
+    }
+    
+    /* 숫자 입력 스피너 제거 */
+    input[type="number"]::-webkit-inner-spin-button, 
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    
+    .table-row-inactive td {
+      opacity: 0.4;
+      background: #f8fafc;
+    }
+    .table-row-inactive:hover td {
+      opacity: 0.7;
+    }
+
+    /* 정렬 애니메이션 대비 클래스 */
+    #tableBody tr { transition: background-color 0.2s ease; }
+  </style>
 </head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel" data-type="module">
-    import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-    import { createRoot } from 'react-dom/client';
-    import { Package, DollarSign, Users, ListFilter, Tag, Calculator, LayoutDashboard, Edit, ArrowRight, ArrowLeft, ArrowRight as ArrowRightIcon, X, ChevronDown, Check, Filter } from 'lucide-react';
+<body class="bg-gray-200 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
 
-// ─── 태그 색상 팔레트 (노션 스타일) ───
-const TAG_COLORS = [
-  { bg: '#e8f0fe', text: '#1a56db', border: '#c3d9f7', name: '파랑' },
-  { bg: '#fef3c7', text: '#b45309', border: '#fde68a', name: '노랑' },
-  { bg: '#d1fae5', text: '#065f46', border: '#a7f3d0', name: '초록' },
-  { bg: '#fce7f3', text: '#9d174d', border: '#fbcfe8', name: '분홍' },
-  { bg: '#ede9fe', text: '#5b21b6', border: '#ddd6fe', name: '보라' },
-  { bg: '#fee2e2', text: '#991b1b', border: '#fecaca', name: '빨강' },
-  { bg: '#f3f4f6', text: '#374151', border: '#d1d5db', name: '회색' },
-  { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0', name: '민트' },
-  { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa', name: '주황' },
-  { bg: '#f0f9ff', text: '#0369a1', border: '#bae6fd', name: '하늘' },
+  <!-- 메인 컨테이너 (화면 꽉 차게, 중앙 정렬) -->
+  <div class="flex-1 flex flex-col bg-white shadow-lg mx-auto w-full max-w-[1400px] overflow-hidden border-x border-gray-300 relative">
+    
+    <!-- 1. Top Bar (수량 및 선지급률 제어 + 뒤로가기) -->
+    <div class="px-3 py-2 border-b border-gray-300 bg-gray-50 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+      <div class="flex items-center gap-4">
+        <!-- 메인으로 돌아가기 버튼 추가 -->
+        <button onclick="window.location.href='../index.html'" class="px-3 py-1.5 bg-slate-800 text-white text-sm font-bold rounded hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2 mr-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+            </svg>
+            메인화면
+        </button>
+        <!-- 수량 블록 -->
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-semibold text-gray-700">생산 수량</span>
+          <input type="number" id="qtyInput" value="1" min="1" class="w-16 text-center text-sm font-bold border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500" />
+          <span class="text-sm text-gray-600">개</span>
+          <div class="flex gap-1 ml-2" id="presets">
+            <button class="preset-btn px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-100" data-val="1">1</button>
+            <button class="preset-btn px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-100" data-val="5">5</button>
+            <button class="preset-btn px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-100" data-val="10">10</button>
+            <button class="preset-btn px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-100" data-val="50">50</button>
+            <button class="preset-btn px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-100" data-val="100">100</button>
+            <button class="preset-btn px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-100" data-val="500">500</button>
+          </div>
+        </div>
+
+        <!-- 일괄 선지급률 블록 -->
+        <div class="flex items-center gap-2 border-l border-gray-300 pl-4">
+          <span class="text-sm font-semibold text-gray-700">일괄 선지급률 지정</span>
+          <input type="number" id="batchPrepayInput" value="50" min="0" max="100" class="w-14 text-center text-sm font-bold text-purple-700 border border-purple-200 bg-purple-50 rounded px-2 py-1 focus:outline-none focus:border-purple-500" />
+          <span class="text-sm text-gray-600">%</span>
+          <button id="btnBatchPrepay" class="ml-1 px-3 py-1 bg-purple-600 text-white text-xs font-bold rounded hover:bg-purple-700 transition-colors shadow-sm">전체 적용</button>
+        </div>
+      </div>
+
+      <div class="text-xs text-gray-500">
+        * 단가를 수정하면 <span class="font-bold text-blue-500">비용순으로 자동 정렬</span>됩니다.
+      </div>
+    </div>
+
+    <!-- 2. Metrics (요약 카드 영역 - 5열 구조) -->
+    <div class="grid grid-cols-5 divide-x divide-gray-200 border-b border-gray-300 bg-white flex-shrink-0">
+      <div class="px-4 py-2">
+        <div class="text-[11px] text-gray-500 mb-0.5">합산 총 비용</div>
+        <div class="text-lg font-bold text-blue-600" id="m-total-cost">₩0</div>
+        <div class="text-[10px] text-gray-400 m-sub-qty">수량 1개 기준</div>
+      </div>
+      <div class="px-4 py-2 bg-purple-50/50">
+        <div class="text-[11px] text-purple-600 mb-0.5 font-semibold">총 필요 선지급액</div>
+        <div class="text-lg font-bold text-purple-800" id="m-prepay-cost">₩0</div>
+        <div class="text-[10px] text-purple-400 m-sub-qty">수량 1개 기준</div>
+      </div>
+      <div class="px-4 py-2">
+        <div class="text-[11px] text-gray-500 mb-0.5">선택 항목 단가 합계</div>
+        <div class="text-lg font-bold text-gray-800" id="m-unit-cost">₩0</div>
+        <div class="text-[10px] text-gray-400">고정 단가</div>
+      </div>
+      <div class="px-4 py-2">
+        <div class="text-[11px] text-gray-500 mb-0.5">총 필요 품목 수</div>
+        <div class="text-lg font-bold text-gray-800" id="m-total-items">0</div>
+        <div class="text-[10px] text-gray-400 m-sub-qty">수량 1개 기준</div>
+      </div>
+      <div class="px-4 py-2 flex justify-between items-end">
+        <div>
+          <div class="text-[11px] text-gray-500 mb-0.5">선택된 제작처 수</div>
+          <div class="text-lg font-bold text-gray-800"><span id="m-active-vendors">0</span> <span class="text-xs font-normal text-gray-400">/ <span id="m-total-vendors">0</span></span></div>
+        </div>
+        <button id="addBtn" class="px-3 py-1.5 bg-gray-800 text-white text-xs rounded hover:bg-gray-700 transition-colors flex items-center gap-1 shadow-sm mb-0.5">
+          <span class="text-lg leading-none mt-[-2px]">+</span> 추가
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. Table Area (메인 스크롤 영역) -->
+    <div class="flex-1 overflow-auto bg-gray-50 relative">
+      <table class="w-full text-[12px] border-collapse whitespace-nowrap table-fixed">
+        <thead class="sticky top-0 bg-gray-100 border-b border-gray-300 shadow-sm z-10 text-gray-600 font-semibold select-none">
+          <tr>
+            <th class="p-1 w-8 text-center border-r border-gray-200">
+              <input type="checkbox" id="checkAll" checked class="w-3.5 h-3.5 cursor-pointer accent-blue-600">
+            </th>
+            <th class="p-1 w-10 text-center border-r border-gray-200">#</th>
+            <th class="p-1 text-left border-r border-gray-200 px-2 min-w-[130px]">제작처 (클릭 수정)</th>
+            <th class="p-1 w-16 text-right border-r border-gray-200 px-2">품목 수</th>
+            <th class="p-1 w-28 text-right border-r border-gray-200 px-2 text-blue-700">단가 (₩) ↓</th>
+            <th class="p-1 w-32 text-right border-r border-gray-200 px-2 bg-blue-50">총 금액 (₩)</th>
+            <th class="p-1 w-20 text-center border-r border-gray-200 px-1 text-purple-700">선지급률(%)</th>
+            <th class="p-1 w-28 text-right border-r border-gray-200 px-2 bg-purple-50">선지급액 (₩)</th>
+            <th class="p-1 w-32 text-left border-r border-gray-200 pl-3">금액 비율</th>
+            <th class="p-1 w-8 text-center"></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody" class="bg-white">
+          <!-- JS 렌더링 영역 -->
+        </tbody>
+        <tfoot class="sticky bottom-0 bg-blue-50 border-t-2 border-gray-400 font-bold z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.02)] text-gray-800">
+          <tr>
+            <td colspan="3" class="p-2 text-center border-r border-gray-300">합계 (선택 항목)</td>
+            <td class="p-2 text-right border-r border-gray-300 px-2" id="f-items">0</td>
+            <td class="p-2 text-right border-r border-gray-300 px-2" id="f-unit">₩0</td>
+            <td class="p-2 text-right border-r border-gray-300 px-2 text-blue-700" id="f-total">₩0</td>
+            <td class="p-2 text-center border-r border-gray-300 px-2 text-gray-400 font-normal text-[11px]">-</td>
+            <td class="p-2 text-right border-r border-gray-300 px-2 text-purple-700" id="f-prepay">₩0</td>
+            <td class="p-2 pl-3 text-gray-500 text-[11px] font-normal" colspan="2">100%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- 로딩 스크린 -->
+    <div id="loadingScreen" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
+      <p class="text-gray-600 font-bold">데이터를 불러오는 중...</p>
+    </div>
+
+    <!-- Save Indicator -->
+    <div id="saveIndicator" class="absolute bottom-16 right-6 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg font-bold text-sm transition-opacity duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/></svg>
+      저장됨
+    </div>
+
+  </div>
+
+<script>
+// 초기 데이터 (기본적으로 prepayPct는 0으로 시작)
+const rawData = [
+  { name: '수입', items: 4, unit: 8548340 },
+  { name: '티엘씨', items: 54, unit: 1328600 },
+  { name: '베이직옵틱스', items: 5, unit: 826334 },
+  { name: '중원테크', items: 2, unit: 382000 },
+  { name: '스카이즈', items: 1, unit: 324000 },
+  { name: '명신기계', items: 44, unit: 187042 },
+  { name: '씨앤디서플라이', items: 1, unit: 160000 },
+  { name: '기구가공팀', items: 5, unit: 113600 },
+  { name: '독도', items: 5, unit: 81333 },
+  { name: '남해전자', items: 11, unit: 77030 },
+  { name: '미확인/기타', items: 27, unit: 59356 },
+  { name: '아태일렉트로닉스', items: 5, unit: 41630 },
+  { name: '서일테크', items: 21, unit: 33229 },
+  { name: '신광', items: 1, unit: 27000 },
+  { name: '케이블트론', items: 2, unit: 21300 },
+  { name: '중앙정밀', items: 13, unit: 20116 },
+  { name: '탑전자', items: 7, unit: 17919 },
+  { name: '옥신씨엔씨', items: 2, unit: 16500 },
+  { name: '명성화학', items: 17, unit: 13570 },
+  { name: '옵토웰', items: 1, unit: 10000 },
+  { name: '구매', items: 14, unit: 9785 },
+  { name: '씨앤와이', items: 1, unit: 4500 },
+  { name: '신광산업', items: 6, unit: 4178 },
+  { name: '동우포장', items: 1, unit: 2580 },
+  { name: '세인정밀', items: 50, unit: 2500 },
+  { name: '피앤피컴포넌츠', items: 1, unit: 1700 },
+  { name: '한국아이현', items: 4, unit: 1600 },
+  { name: '호재상사', items: 1, unit: 1400 },
+  { name: '대현', items: 2, unit: 1000 },
+  { name: '대연정밀금속', items: 1, unit: 1000 },
+  { name: '에이원고무', items: 3, unit: 158 },
 ];
-const getTagColor = (tag, allTags) => {
-  const idx = allTags.indexOf(tag);
-  return TAG_COLORS[idx >= 0 ? idx % TAG_COLORS.length : Math.abs(tag.split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % TAG_COLORS.length];
-};
 
-// ─── 다중선택 태그 컴포넌트 (노션 스타일) ───
-function MultiSelectTags({ selected, allTags, onChange }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [newTag, setNewTag] = useState('');
-  const ref = useRef(null);
+let tableData = [];
+let currentQty = 1;
+let saveTimer = null;
 
-  useEffect(() => {
-    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setIsOpen(false); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
+// 유틸리티 포맷팅
+const fmtMoney = (n) => '₩' + Math.round(n).toLocaleString('ko-KR');
+const fmtNum = (n) => Math.round(n).toLocaleString('ko-KR');
+const parseNum = (str) => parseFloat(String(str).replace(/[^0-9.-]/g, '')) || 0;
 
-  const toggle = (tag) => {
-    if (selected.includes(tag)) onChange(selected.filter(t => t !== tag));
-    else onChange([...selected, tag]);
-  };
-
-  const addNew = () => {
-    const t = newTag.trim();
-    if (!t) return;
-    if (!selected.includes(t)) onChange([...selected, t]);
-    setNewTag('');
-  };
-
-  return (
-    <div ref={ref} className="relative">
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex flex-wrap gap-1 items-center min-h-[28px] px-2 py-1 border border-[#e6e8ea] rounded-lg cursor-pointer hover:border-[#111c2d] transition-colors bg-white min-w-[100px]"
-      >
-        {selected.length === 0 && <span className="text-[10px] text-[#b0b8c4]">분류 선택...</span>}
-        {selected.map(tag => {
-          const c = getTagColor(tag, allTags);
-          return (
-            <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap" style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
-              {tag}
-              <button onClick={(e) => { e.stopPropagation(); toggle(tag); }} className="hover:opacity-60"><X size={10} /></button>
-            </span>
-          );
-        })}
-      </div>
-      {isOpen && (
-        <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-[#e6e8ea] w-56 z-50 p-2 max-h-64 overflow-y-auto">
-          <div className="flex gap-1 mb-2">
-            <input
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); addNew(); } }}
-              placeholder="새 분류 입력..."
-              className="flex-1 text-xs px-2 py-1.5 border border-[#e6e8ea] rounded-lg outline-none focus:border-[#111c2d]"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <button onClick={(e) => { e.stopPropagation(); addNew(); }} className="px-2 py-1 bg-[#111c2d] text-white text-[10px] font-bold rounded-lg hover:bg-[#2a3a52]">추가</button>
-          </div>
-          {allTags.filter(t => t !== '미지정').map(tag => {
-            const c = getTagColor(tag, allTags);
-            const active = selected.includes(tag);
-            return (
-              <button
-                key={tag}
-                onClick={(e) => { e.stopPropagation(); toggle(tag); }}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#f7f9fb] transition-colors text-left"
-              >
-                <div className={`w-4 h-4 rounded border flex items-center justify-center ${active ? 'bg-[#111c2d] border-[#111c2d]' : 'border-[#d1d5db]'}`}>
-                  {active && <Check size={10} className="text-white" />}
-                </div>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold" style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{tag}</span>
-              </button>
-            );
-          })}
-          {allTags.filter(t => t !== '미지정').length === 0 && (
-            <p className="text-center text-[10px] text-[#b0b8c4] py-2">분류를 입력해서 추가하세요</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
+function saveToFirebase() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    db.collection('costingTool').doc('spreadsheet_state').set({
+      tableData: tableData,
+      currentQty: currentQty,
+      updatedAt: new Date().toISOString()
+    }).then(() => {
+      const ind = document.getElementById('saveIndicator');
+      ind.classList.remove('opacity-0');
+      setTimeout(() => ind.classList.add('opacity-0'), 2000);
+    }).catch(console.error);
+  }, 1000);
 }
 
-// 원본 데이터
-const RAW_DATA = `부품명 수량 단가 후공정 금액
-스위치명판, 대구경열상용 1 100 - 100 건영정밀조각
-스프링핀 Ø3x16, STS, 대구경열상용 1 50 - 50 구매
-스티커(취급주의) 2 500 1,000 구매
-스티커(제품정보) 2 500 1,000 구매
-매뉴얼 1 1,200 1,200 구매
-Wire Harness, FND Cable, DIO-FND-CABLE1.0 1 10 10 구매
-Wire Harness, 28AWG/RED/100mm 1 10 10 구매
-Wire Harness, 28AWG/BLACK/100mm 1 10 10 구매
-Wire Harness, LED Cable, DIO-LED-CABLE1.0 1 10 10 구매
-Wire Harness, Engine Cable, DIO-ENGINE_CABLE1.0 1 10 10 구매
-Wire Harness, KEY 3BUTTON Cable, DIO-KEY-CABLE1.0 1 10 10 구매
-Wire Harness, AWG24/RED/230mm 1 10 10 구매
-Wire Harness, AWG24/WHITE/230mm 1 10 10 구매
-Wire Harness, AWG24/BLACK/230mm 1 10 10 구매
-Wire Harness, AWG24/YELLOW/230mm 1 10 10 구매
-수축튜브(1.5/0.7/15mm) 4 10 40 구매
-Wire Harness, AWG24/RED/230mm 1 10 10 구매
-Wire Harness, AWG24/WHITE/230mm 1 10 10 구매
-Wire Harness, AWG24/BLUE/230mm 1 10 10 구매
-Wire Harness(KEY LRF CABLE) 1 10 10 구매
-Wire Harness(KEY EXTERNAL LRF CABLE) 1 10 10 구매
-Wire Harness(LRF CABLE) 1 10 10 구매
-강구 Ø2.5, 대구경열상용 1 6 - 6 구매
-건전지커버 고정핀, 대구경열상용 1 3,040 - 3,040 구매
-건전지커버 고정핀, 대구경열상용 1 3,040 - 3,040 구매
-허니컴(105.556.58), 대구경열상용 1 689 - 689 구매
-자석-(3483800-Dia15xT3.0) 1 100 - 100 구매
-아일렛 1 50 - 50 구매
-캐패시터, 대구경열상용 1 50 50 구매
-아일렛 1 50 - 50 구매
-벨크로 2 500 1,000 구매
-볼플런저 M4x9, STS, 대구경열상용 1 930 - 930 구매
-와이어(볼트고정용), 대구경열상용 1 4,000 - 4,000 구매
-오링 S10(크리크볼트), 대구경열상용 4 6 - 24 구매
-볼플런저 M5x9, STS, 대구경열상용 1 930 - 930 구매
-캐패시터, 대구경열상용 2 50 100 구매
-PCB (로터리스위치용 조립체), 대구경열상용 1 1,480 - 1,480 남해전자
-PCB, FND용 조립체, 대구경열상용 1 7,555 - 7,555 남해전자
-PCB, MAIN BOARD 조립체, 대구경열상용 1 7,555 - 7,555 남해전자
-서브PCB, 대구경열상용 1 7,555 - 7,555 남해전자
-PCB (메뉴버튼용 조립체), 대구경열상용 1 7,555 - 7,555 남해전자
-LRF KEY PCB 조립체, 대구경열상용 1 7,555 - 7,555 남해전자
-LRF발사버튼 PCB 조립체, 대구경열상용 1 7,555 - 7,555 남해전자
-건전지 PCB-A,충전용(기판), 대구경열상용 1 7,555 - 7,555 남해전자
-건전지 PCB-B,충전용(기판), 대구경열상용 1 7,555 - 7,555 남해전자
-건전지 PCB-A,AA용(기판), 대구경열상용 1 7,555 - 7,555 남해전자
-건전지 PCB-B,AA용(기판), 대구경열상용 1 7,555 - 7,555 남해전자
-손잡이고정판 블록 1 1,000 - 1,000 대연정밀금속
-탄도고정 스페이서, 열영상대구경 1 1,000 500 1,500 대연정밀금속
-몸체하우징커버, 대구경열상용 1 20,000 - 20,000 독도
-몸체하우징커버, 대구경열상용 1 20,000 - 20,000 독도
-프리즘하우징, 대구경열상용 1 15,000 4,000 19,000 독도
-후드, 대구경열상용 1 18,000 - 18,000 독도
-열상렌즈보호고무덮개조립체, 대구경열상용 1 18,333 - 18,333 독도
-케이블, 대구경열상용 1 10,000 - 10,000 독도
-케이블, 대구경열상용 1 18,500 - 18,500 옥신씨앤씨
-케이블, 대구경열상용 1 10,000 - 10,000 독도
-포장박스 1 2,580 2,580 동우포장
-LRF발사버튼 상측커버 오링, 대구경열상용 1 1,000 - 1,000 명성화학
-각링,충전용건전지하우징 후면판용, 대구경열상용 1 320 - 320 명성화학
-오링 (메뉴버튼용), 대구경열상용 1 530 - 530 명성화학
-오링 (스위치블럭전면판용), 대구경열상용 1 530 - 530 명성화학
-스펀지 1 5,300 5,300 명성화학
-오링 (PCB덮개(L)용), 대구경열상용 1 589 - 589 명성화학
-오링 (대구경몸체용), 대구경열상용 1 589 - 589 명성화학
-오링, AN039, 대구경열상용 1 589 - 589 명성화학
-오링 (열상몸체하우징), 대구경열상용 1 589 - 589 명성화학
-오-링, LRF몸체하우징용(Jenoptik_Vectronix),대구경열상용 1 589 - 589 명성화학
-오-링, LRF덮개내측블럭용(Jenoptik_Vectronix),대구경열상용 2 589 - 1,178 명성화학
-오-링, LRF고정판덮개(Jenoptik_Vectronix),대구경열상용 1 589 - 589 명성화학
-오링(충전용건전지하우징용), 대구경열상용 1 589 589 명성화학
-오링 (AA건전지하우징용), 대구경열상용 1 589 589 명성화학
-각링,AA건전지하우징 후면판용, 대구경열상용 1 589 - 589 명성화학
-좌우유격방지축잠금링, 대구경열상용 1 1,200 200 1,400 명신기계
-LRF회전축(Jenoptik),대구경열상용 1 3,334 - 3,334 명신기계
-좌우조정볼트(T형), 대구경열상용 1 6,667 - 6,667 명신기계
-탄도고정 스페이서 고정축, 열영상대구경 1 1,090 50 1,140 명신기계
-좌우유격방지볼트, 대구경열상용 1 1,290 - 1,290 명신기계
-LRF회전축볼트(Jenoptik),대구경열상용 1 4,000 - 4,000 명신기계
-좌우조정축, 대구경열상용 1 4,140 - 4,140 명신기계
-크리크볼트, 대구경열상용 2 5,030 100 10,260 명신기계
-영점조절하우징(Jenoptik_Vectronix),대구경열상용 1 3,560 100 3,660 명신기계
-스위치축, 대구경열상용 1 995 120 1,115 명신기계
-스위치핀, 대구경열상용 1 70 - 70 명신기계
-크리크핀(좌우), 대구경열상용 1 553 - 553 명신기계
-크리크핀(상하), 대구경열상용 1 553 - 553 명신기계
-와셔, 상하조정볼트용, 대구경열상용 1 1,700 - 1,700 명신기계
-평와셔 M3, 사이트고정손잡이용 2 1,700 3,400 명신기계
-탄도고정 스페이서 고정핀, 열영상대구경, Dia2.0, L=6.0mm 1 1,000 - 1,000 명신기계
-좌우조정너트, 대구경열상용 1 3,600 600 4,200 명신기계
-RC_LED하우징, 대구경열상용 1 9,000 250 9,250 명신기계
-크리크너트, 대구경열상용 2 2,000 400 4,800 명신기계
-손잡이고정판 블록고정나사 1 1,800 - 1,800 명신기계
-영점조절볼트(Jenoptik_Vectronix),대구경열상용 1 200 100 300 명신기계
-상하조정축잠금링, 대구경열상용 1 1,200 200 1,400 명신기계
-상하조정축와샤, 대구경열상용 1 1,200 - 1,200 명신기계
-좌우조정축와샤, 대구경열상용 1 1,200 - 1,200 명신기계
-탄도위치고정판와샤, 대구경열상용 2 1,200 - 2,400 명신기계
-레버고정볼트, 대구경열상용 3 450 - 1,350 명신기계
-탄도보정받침, 대구경열상용 1 1,500 - 1,500 명신기계
-중간몸체축, 대구경열상용 1 2,000 80 2,080 명신기계
-고정볼트, 초점조절링, 대구경열상용 6 800 - 4,800 명신기계
-고정링, 초점조절링, 대구경열상용 1 6,000 - 6,000 명신기계
-가이드볼트, 초점조절링, 대구경열상용 2 700 - 1,400 명신기계
-스위치몸체, 대구경열상용 1 3,400 - 3,400 명신기계
-LRF정렬볼트커버B(Jenoptik_Vectronix),대구경열상용 1 250 450 700 명신기계
-상하크리크하우징, 대구경열상용 1 7,500 - 7,500 명신기계
-스프링조정잠금링, 대구경열상용 1 1,200 200 1,400 명신기계
-좌우유격방지축, 대구경열상용 1 1,800 100 1,900 명신기계
-크리크핀, 대구경열상용 2 4,000 - 8,000 명신기계
-상하조정볼트, 대구경열상용 1 6,530 - 6,530 명신기계
-상하조정축, 대구경열상용 1 33,810 - 33,810 명신기계
-크로스볼트, 대구경열상용 2 5,000 - 10,000 명신기계
-건전지하우징 인서트, 대구경열상용 1 3,400 - 3,400 명신기계
-건전지하우징 인서트, 대구경열상용 1 3,400 - 3,400 명신기계
-보호유리,킬플레시, 대구경열상용 1 7,000 12,000 19,000 베이직옵틱스
-FND보호유리, 대구경열상용 1 9,500 - 9,500 베이직옵틱스
-열상렌즈A, 대구경열상용 1 335,667 - 335,667 베이직옵틱스
-열상렌즈B, 대구경열상용 1 464,167 - 464,167 베이직옵틱스
-LRF유리(Jenoptik),대구경열상용 1 10,000 - 10,000 베이직옵틱스
-LRF발사버튼 케이블고정 스프링, 대구경열상용 1 800 - 800 서일테크
-상하크리크스프링, 대구경열상용 1 70 - 70 서일테크
-크리크볼트스프링, 대구경열상용 2 1,000 100 2,200 서일테크
-LED조절용스프링, 대구경열상용 1 800 100 900 서일테크
-탄도보정몸체스프링, 대구경열상용 1 250 100 350 서일테크
-스프링1 (중하부몸체용), 대구경열상용 1 500 100 600 서일테크
-탄도고정 스페이서 가이드스프링, 열영상대구경,외경Dia3.6, L=12.0mm 1 500 100 600 서일테크
-탄도고정 하우징버튼스프링, 열영상대구경,외경Dia5.4, L=12.0mm 1 500 100 600 서일테크
-좌우크리크스프링, 대구경열상용 1 70 - 70 서일테크
-스프링2 (중하부몸체용), 대구경열상용 1 350 - 350 서일테크
-스위치크리크스프링, 대구경열상용 1 28 - 28 서일테크
-손잡이고정판 블록스프링 1 2,500 - 2,500 서일테크
-건전지접지스프링(AA용), 대구경열상용 1 700 - 700 서일테크
-LED블럭덮개스프링, 대구경열상용 4 160 - 640 서일테크
-LRF영점스프링(Jenoptik_Vectronix),대구경열상용 2 160 - 320 서일테크
-전면부스프링(Jenoptik_Vectronix),대구경열상용 2 700 - 1,400 서일테크
-건전지접지스프링(충전용), 대구경열상용 4 41 - 164 서일테크
-우측면스프링, 대구경열상용 1 8,000 - 8,000 서일테크
-좌측면스프링, 대구경열상용 1 8,000 - 8,000 서일테크
-좌측면스프링(하부몸체용), 대구경열상용 1 8,000 - 8,000 서일테크
-스프링 (LED크리크볼트용), 대구경열상용 2 100 - 200 서일테크
-좌우조정볼트스프링, 대구경열상용 1 8,000 - 8,000 서일테크
-좌우조정볼트스프링(하부몸체용), 대구경열상용 1 8,000 - 8,000 서일테크
-납작머리십자볼트 M2x4, STS, 대구경열상용 2 50 50 200 세인정밀
-냄비머리십자볼트 M2.5x5, STS, 대구경열상용 2 50 50 200 세인정밀
-육각렌치볼트 M2x5, STS, 대구경열상용 4 50 50 400 세인정밀
-육각렌치볼트 M2x8, STS, 대구경열상용 4 50 50 400 세인정밀
-육각렌치볼트 M4x8, STS, 대구경열상용 4 50 50 400 세인정밀
-냄비머리십자볼트 M3x6, STS, 대구경열상용 1 50 50 100 세인정밀
-냄비머리십자볼트 M3x6, STS, 대구경열상용 4 50 50 400 세인정밀
-납작머리십자볼트 M2x4, STS, 대구경열상용 4 50 50 400 세인정밀
-육각홈붙이볼트 M3x6, STS(와샤결합), 대구경열상용 3 50 50 300 세인정밀
-무두볼트 M2x8, STS, 대구경열상용 2 50 50 200 세인정밀
-#2-56 UNC 길이 6.0mm 4 50 50 400 세인정밀
-육각렌치볼트 M2.5x5, STS, 대구경열상용 2 50 50 200 세인정밀
-육각렌치볼트 M2.5x8, STS, 대구경열상용 4 50 50 400 세인정밀
-납작머리십자볼트 M2x4, STS, 대구경열상용 4 50 50 400 세인정밀
-납작머리십자볼트 M2x4, STS, 대구경열상용 4 50 50 400 세인정밀
-냄비머리십자볼트 M3x6, STS, 대구경열상용 4 50 50 400 세인정밀
-육각렌치볼트 M2.5x5, STS, 대구경열상용 3 50 50 300 세인정밀
-육각렌치볼트 M2.5x8, STS, 대구경열상용 4 50 50 400 세인정밀
-육각렌치볼트 M4x8, STS, 대구경열상용 3 50 50 300 세인정밀
-육각렌치볼트 M4x8, STS, 대구경열상용 2 50 50 200 세인정밀
-우산머리십자볼트 M4x6, 대구경열상용 1 50 50 100 세인정밀
-둥근머리십자볼트 M3x6, STS, 대구경열상용 4 50 50 400 세인정밀
-육각렌치볼트 M2.5x8, STS, 대구경열상용 4 50 50 400 세인정밀
-냄비머리십자볼트 M3x8, STS, 대구경열상용 1 50 50 100 세인정밀
-냄비머리십자볼트 M3x4, STS, 대구경열상용 6 50 50 600 세인정밀
-납작머리십자볼트 M2x5, STS, 대구경열상용 6 50 50 600 세인정밀
-냄비머리십자볼트 M3x6, STS, 대구경열상용 9 50 50 900 세인정밀
-육각렌치볼트 M2.5*8, STS, 대구경열상용 8 50 50 800 세인정밀
-접시머리육각렌치볼트 M2x4, STS, 대구경열상용 4 50 50 400 세인정밀
-냄비머리십자볼트 M3x4, STS, 대구경열상용 6 50 50 600 세인정밀
-납작머리십자볼트 M2x5, STS, 대구경열상용 4 50 50 400 세인정밀
-납작머리십자볼트 M2x4, STS, 대구경열상용 4 50 50 400 세인정밀
-납작머리십자볼트 M2x4, STS, 대구경열상용 14 50 50 1,400 세인정밀
-육각렌치볼트 M2x6, STS 2 50 50 200 세인정밀
-납작머리십자볼트 M2x4 2 50 50 200 세인정밀
-무두볼트 M3x3, STS, 대구경열상용 1 50 50 100 세인정밀
-육각렌치볼트 M3x10, STS, 대구경열상용 8 50 50 800 세인정밀
-냄비머리십자볼트 M3x6, STS, 대구경열상용 4 50 50 400 세인정밀
-냄비머리십자볼트 M3x8, STS(사이트고정손잡이), 대구경열상용 2 50 50 200 세인정밀
-무두볼트 M6x8, STS, 대구경열상용 1 50 50 100 세인정밀
-육각렌치볼트 M4x8, STS, 대구경열상용 2 50 50 200 세인정밀
-납작머리십자볼트 M2X6,STS, 열영상대구경 3 50 50 300 세인정밀
-육각렌치볼트 M4X15, STS, 열영상대구경 2 50 50 200 세인정밀
-육각렌치볼트 M2.5X8, STS, 열영상대구경 1 50 50 100 세인정밀
-무두볼트 M5x4, STS, 열영상대구경 1 50 50 100 세인정밀
-십자둥근머리볼트 M3x6, STS, 대구경열상용 2 50 50 200 세인정밀
-육각렌치볼트 M3x16, STS, 대구경열상용 6 50 50 600 세인정밀
-납작머리십자볼트 M2x5, STS, 대구경열상용 4 50 50 400 세인정밀
-십자둥근머리볼트 M3x6, STS, 대구경열상용 2 50 50 200 세인정밀
-육각렌치볼트 M3x25, STS, 대구경열상용 6 50 50 600 세인정밀
-납작머리십자볼트 M2x5, STS, 대구경열상용 9 50 50 900 세인정밀
-6각 너트 M2.5, STS, 대구경열상용 4 15 - 60 세인정밀
-LRF모듈(Jenoptik_DELM20),대구경열상용 1 3,917,715 - 3,917,715 수입
-엔진모듈(SCD), 대구경열상용 1 4,400,625 4,400,625 수입
-프리즘, 대구경열상용 1 230,000 - 230,000 수입
-반사렌즈, 대구경열상용 1 27,000 - 27,000 수입
-열상하우징(SCD용), 대구경열상용 1 42,000 티엘씨
-LCD PANEL_LSM050THDI-L01 1 324,000 - 324,000 스카이즈
-상하볼트고정판, 대구경열상용 2 700 - 1,400 신광산업
-접지단자, 대구경열상용 2 90 100 380 신광산업
-고정판스프링, 대구경열상용 3 238 - 714 신광산업
-고정판, 대구경열상용 3 3,000 - 9,000 신광산업
-건전지접지터미널, 대구경열상용 4 100 - 400 신광산업
-건전지케이스고정판, 대구경열상용 1 250 - 250 신광산업
-건전지접지터미널, 대구경열상용 1 50 - 50 신광산업
-건전지케이스고정판, 대구경열상용 1 250 - 250 신광산업
-하드케이스 1 160,000 160,000 씨앤디서플라이
-필터유리, 대구경열상용 1 166,000 - 166,000 씨앤와이
-aa건전지 8 1,700 13,600 아태일렉트로닉스
-충전용건전지 4 8,290 33,160 아태일렉트로닉스
-충전기 1 24,240 24,240 아태일렉트로닉스
-마이크로5핀 충전케이블 1 1,400 1,400 아태일렉트로닉스
-일자드라이버(set) 1 6,000 6,000 아태일렉트로닉스
-1 70 - 70 에이원고무
-오링 AN012(전원부커넥터), 대구경열상용 1 80 - 80 에이원고무
-오-링, LRF영점조절부용(Jenoptik_Vectronix),대구경열상용 2 8 - 16 에이원고무
-오링 AN029(열상렌즈하우징), 대구경열상용 2 350 - 700 에이원고무
-오링, AN032, 대구경열상용 2 80 - 160 에이원고무
-오링 Ø5(내경2.8x0.8T)(스위치축), 대구경열상용 1 995 - 995 에이원고무
-오링 Ø12x0.5T(스위치손잡이), 대구경열상용 1 80 - 80 에이원고무
-오링 AN012(LRF커넥터), 대구경열상용 1 80 - 80 에이원고무
-오링 Ø6.2x1.0T(LRF스프링하우징), 대구경열상용 2 80 - 160 에이원고무
-RC LED, 대구경열상용 1 10,000 10,000 옵토웰
-스프링덮개(대), 대구경열상용 3 550 400 2,850 중앙정밀
-스프링덮개(소), 대구경열상용 1 550 400 950 중앙정밀
-잠금링A, 대구경열상용 1 1,500 - 1,500 중앙정밀
-잠금링B, 대구경열상용 1 1,500 300 1,800 중앙정밀
-잠금링C, 대구경열상용 1 1,500 300 1,800 중앙정밀
-영점스프링하우징(Jenoptik_Vectronix),대구경열상용 2 1,666 450 4,232 중앙정밀
-LRF스프링하우징(Jenoptik_Vectronix),대구경열상용 2 200 450 1,300 중앙정밀
-LRF정렬볼트커버(Jenoptik_Vectronix),대구경열상용 1 250 450 700 중앙정밀
-좌우조정축잠금링, 대구경열상용 1 2,200 200 2,400 중앙정밀
-스위치기판잠금링, 대구경열상용 1 1,500 200 1,700 중앙정밀
-스위치몸체잠금링, 대구경열상용 1 1,500 200 1,700 중앙정밀
-스위치손잡이, 대구경열상용 1 3,000 - 3,000 중앙정밀
-열상렌즈연결링, 대구경열상용 1 4,200 - 4,200 중앙정밀
-전원부커넥터, 대구경열상용 1 6,500 - 6,500 케이블트론
-커넥터 (비디오용 조립체), 대구경열상용 1 14,800 - 14,800 케이블트론
-LRF커넥터, 대구경열상용 1 6,500 - 6,500 케이블트론
-단자베이스, 대구경열상용 1 20 - 20 탑전자
-프리즘렌즈측면덮개(좌)/(우), 대구경열상용 1 1,662 - 1,662 탑전자
-프리즘렌즈상부덮개, 대구경열상용 1 2,268 - 2,268 탑전자
-렌즈커버, 대구경열상용 1 2,235 - 2,235 탑전자
-프리즘커버, 대구경열상용 1 2,426 - 2,426 탑전자
-필터커버, 대구경열상용 1 7,308 - 7,308 탑전자
-필터커버내측블럭, 대구경열상용 1 2,000 - 2,000 탑전자
-필터커버내측블럭, 대구경열상용 1 2,000 - 2,000 탑전자
-충전용 건전지하우징 커버볼트, 대구경열상용 1 4,200 500 4,700 티엘씨
-건전지하우징 커버볼트, 대구경열상용 1 4,200 500 4,700 티엘씨
-열상렌즈고무(프레임), 대구경열상용 1 1,800 - 1,800 티엘씨
-필터고정볼트, 대구경열상용 1 2,400 300 2,700 티엘씨
-필터고정볼트, 대구경열상용 1 2,400 300 2,700 티엘씨
-충전용 건전지하우징 덮개, 대구경열상용 1 13,200 2,500 15,700 티엘씨
-열상렌즈하우징 경통, 대구경열상용 1 12,000 2,500 14,500 티엘씨
-AA용 건전지하우징 덮개, 대구경열상용 1 13,200 2,500 15,700 티엘씨
-FND후드막음블럭, 대구경열상용 1 9,000 800 9,800 티엘씨
-RC LED홀더, 대구경열상용 1 3,600 400 4,000 티엘씨
-블럭덮개상판, 대구경열상용 1 13,200 1,000 14,200 티엘씨
-블럭덮개하판A, 대구경열상용 1 2,400 400 2,800 티엘씨
-블럭덮개하판B, 대구경열상용 1 2,400 400 2,800 티엘씨
-상하크리크블럭, 대구경열상용 1 12,000 800 12,800 티엘씨
-상하이동블럭, 대구경열상용 1 4,200 400 4,600 티엘씨
-좌우블럭, 대구경열상용 1 13,200 1,200 14,400 티엘씨
-크리크막음블럭, 대구경열상용 2 6,000 600 13,200 티엘씨
-열상렌즈하우징, 대구경열상용 1 40,000 3,000 43,000 티엘씨
-렌즈커버볼트, 대구경열상용 1 2,400 300 2,700 티엘씨
-손잡이, 초점조절링, 대구경열상용 2 3,600 450 8,100 티엘씨
-열상몸체하우징, 대구경열상용 1 250,000 6,000 256,000 티엘씨
-LRF고정판덮개(Jenoptik),대구경열상용 1 36,000 3,000 39,000 티엘씨
-LRF덮개내측블럭(Jenoptik_Vectronix),대구경열상용 2 2,400 700 6,200 티엘씨
-LRF상하좌우축(Jenoptik_DELM20),대구경열상용 1 4,200 500 4,700 티엘씨
-LRF렌즈마운트B(Jenoptik),대구경열상용 1 6,000 800 6,800 티엘씨
-LRF발사버튼 벨크로고정판, 대구경열상용 1 9,000 1,200 10,200 티엘씨
-탄도보정몸체, 대구경열상용 1 90,000 5,000 95,000 티엘씨
-중간몸체, 대구경열상용 1 15,000 2,500 17,500 티엘씨
-하부몸체, 대구경열상용 1 125,000 3,500 128,500 티엘씨
-클램프(좌), 대구경열상용 1 3,600 500 4,100 티엘씨
-클램프, 대구경열상용 1 3,600 500 4,100 티엘씨
-사이트고정손잡이, 대구경열상용 2 8,000 - 16,000 티엘씨
-탄도보정손잡이, 대구경열상용 1 7,000 600 7,600 티엘씨
-탄도보정레버, 대구경열상용 2 5,000 500 11,000 티엘씨
-탄도고정 스페이서 하우징, 열영상대구경 1 2,400 500 2,900 티엘씨
-장착대몸체, 대구경열상용 1 205,600 18,000 223,600 티엘씨
-LRF발사버튼 커버, 대구경열상용 1 2,400 500 2,900 티엘씨
-LRF발사버튼 상측커버, 대구경열상용 1 15,000 2,500 17,500 티엘씨
-평와샤 Ø3, STS, 대구경열상용 2 1,200 - 2,400 티엘씨
-후드고정프레임, 대구경열상용 1 19,200 - 19,200 티엘씨
-LRF발사버튼 손잡이고정판 1 12,000 - 12,000 티엘씨
-자석커버 1 600 - 600 티엘씨
-충전용 건전지하우징, 대구경열상용 1 27,000 - 27,000 티엘씨
-충전용 건전지하우징 밑판, 대구경열상용 1 12,000 - 12,000 티엘씨
-AA용 건전지하우징 밑판, 대구경열상용 1 12,000 - 12,000 티엘씨
-탄도위치고정판, 대구경열상용 1 15,000 - 15,000 티엘씨
-LRF마운트블럭(Jenoptik_DELM20),대구경열상용 1 84,000 450 84,450 티엘씨
-LRF 몸체하우징(Jenoptik_Vectronix), 대구경열상용 1 150,000 - 150,000 티엘씨
-LRF렌즈마운트A(Jenoptik),대구경열상용 1 6,000 1,000 7,000 티엘씨
-탄도보정축(12.7mm), 대구경열상용 1 35,000 1,000 36,000 티엘씨
-LRF 모듈커버(Jenoptik), 대구경열상용 1 5,800 - 5,800 티엘씨
-고정레버(둥근것), 대구경열상용 2 1,800 - 3,600 티엘씨
-고정레버(각진것), 대구경열상용 1 3,000 - 3,000 티엘씨
-탄도고정 하우징 버튼, 열영상대구경 1 4,200 500 4,700 티엘씨
-탄도고정 스페이서 가이드, 열영상대구경 1 3,000 500 3,500 티엘씨
-탄도고정 하우징덮개, 열영상대구경 1 10,000 600 10,600 티엘씨
-필터커버, 대구경열상용 1 70,000 - 70,000 티엘씨
-프리즘렌즈받침, 대구경열상용 1 18,000 - 18,000 티엘씨
-초점조절링, 대구경열상용 1 38,000 2,500 40,500 티엘씨
-AA용 건전지하우징, 대구경열상용 1 - - 36,000 티엘씨
-스위치블럭전면판, 대구경열상용 1 25,800 - 25,800 티엘씨
-대구경몸체, 대구경열상용 1 180,000 23,000 203,000 티엘씨
-PCB덮개(L), 대구경열상용 1 132,000 5,000 137,000 티엘씨
-버튼덮개블럭, 대구경열상용 1 12,000 - 12,000 티엘씨
-와이어슬리브(볼트고정용), 대구경열상용 1 300 - 300 티엘씨
-반달키, 대구경열상용 2 650 - 1,300 티엘씨
-탄도고정 하우징, 열영상대구경 1 - - - 대연정밀금속
-열상렌즈보호고무덮개, 대구경열상용 1 17,000 - 17,000 한국아이현
-LRF발사버튼, 대구경열상용 1 100 - 100 한국아이현
-고무버튼, 대구경열상용 1 500 - 500 한국아이현
-LRF고무버튼(Jenoptik_Vectronix),대구경열상용 1 400 - 400 한국아이현
-FND후드, 대구경열상용 1 600 - 600 한국아이현
-클리닝제품 1 1,400 1,400 호재상사`;
-
-const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value) + ' 원';
-
-// ─────────────────────────── RAW_DATA 파서 (초기값 생성용) ───────────────────────────
-function parseRawData() {
-  const lines = RAW_DATA.split('\n').map(l => l.trim()).filter(l => l && !l.includes('부품명 수량 단가'));
-  return lines.map((line, index) => {
-    const regex = /^(.*?)\s+(\d+)\s+([\d,\-]+)\s+(?:([\d,\-]+)\s+)?([\d,\-]+)\s+(\S+)$/;
-    const match = line.match(regex);
-    let name, qty, price, postProcess, supplier;
-    if (match) {
-      name = match[1].trim();
-      qty = parseInt(match[2].replace(/,/g, ''), 10) || 0;
-      price = match[3] === '-' ? 0 : parseInt(match[3].replace(/,/g, ''), 10) || 0;
-      postProcess = match[4] ? (match[4] === '-' ? 0 : parseInt(match[4].replace(/,/g, ''), 10)) : 0;
-      supplier = match[6].trim();
+function init() {
+  db.collection('costingTool').doc('spreadsheet_state').get().then(doc => {
+    if (doc.exists && doc.data().tableData && doc.data().tableData.length > 0) {
+      tableData = doc.data().tableData;
+      currentQty = doc.data().currentQty || 1;
+      document.getElementById('qtyInput').value = currentQty;
     } else {
-      const tokens = line.split(/\s+/);
-      if (tokens.length >= 3) {
-        supplier = tokens.pop();
-        const totalStr = tokens.pop();
-        const totalFallback = totalStr === '-' ? 0 : parseInt(totalStr.replace(/,/g, ''), 10) || 0;
-        qty = 1; price = totalFallback; postProcess = 0;
-        name = tokens.join(' ');
-      } else { return null; }
+      tableData = rawData.map((d, i) => ({ ...d, id: Date.now() + i, active: true, prepayPct: 0 }));
+      currentQty = 1;
     }
-    return { id: index, name, qty, price, postProcess, supplier };
-  }).filter(Boolean);
+    document.getElementById('loadingScreen').style.display = 'none';
+    tableData.sort((a, b) => b.unit - a.unit);
+    renderTable();
+    setupEventListeners();
+    updateTotals();
+    updatePresetButtons();
+  }).catch(err => {
+    console.error(err);
+    document.getElementById('loadingScreen').style.display = 'none';
+    tableData = rawData.map((d, i) => ({ ...d, id: Date.now() + i, active: true, prepayPct: 0 }));
+    tableData.sort((a, b) => b.unit - a.unit);
+    renderTable();
+    setupEventListeners();
+    updateTotals();
+    updatePresetButtons();
+  });
 }
 
-export default function App() {
-  const [items, setItems] = useState([]);
-  const [vendorTypes, setVendorTypes] = useState({});
-  const [productionQty, setProductionQty] = useState(1);
-  const [activeTab, setActiveTab] = useState('summary');
-  const [isLoading, setIsLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
-  const saveTimer = React.useRef(null);
-
-  // ─── Firebase에서 데이터 로드 ───
-  useEffect(() => {
-    setIsLoading(true);
-    db.collection('costingTool').doc('state').get()
-      .then(doc => {
-        if (doc.exists && doc.data().items && doc.data().items.length > 0) {
-          setItems(doc.data().items);
-          setVendorTypes(doc.data().vendorTypes || {});
-        } else {
-          // Firebase에 데이터 없으면 RAW_DATA로 초기화
-          setItems(parseRawData());
-        }
-      })
-      .catch(() => setItems(parseRawData()))
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  // ─── 자동 저장 (debounce 1000ms) ───
-  const triggerSave = React.useCallback((nextItems, nextVendorTypes) => {
-    setSaveStatus('saving');
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      db.collection('costingTool').doc('state').set({
-        items: nextItems,
-        vendorTypes: nextVendorTypes,
-        updatedAt: new Date().toISOString()
-      })
-        .then(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000); })
-        .catch(() => setSaveStatus('error'));
-    }, 1000);
-  }, []);
-
-  // 통계 계산
-  const { vendors, totals } = useMemo(() => {
-    const vendorsMap = {};
-    let grandTotalAmount = 0;
-    let grandTotalItems = items.length;
-    let grandTotalQty = 0;
-
-    items.forEach(item => {
-      const itemTotal = (item.price * item.qty) + item.postProcess;
-      if (!vendorsMap[item.supplier]) {
-        vendorsMap[item.supplier] = { name: item.supplier, itemCount: 0, totalQty: 0, totalAmount: 0 };
-      }
-      vendorsMap[item.supplier].itemCount += 1;
-      vendorsMap[item.supplier].totalQty += item.qty;
-      vendorsMap[item.supplier].totalAmount += itemTotal;
-
-      grandTotalAmount += itemTotal;
-      grandTotalQty += item.qty;
-    });
-
-    return {
-      vendors: Object.values(vendorsMap).sort((a, b) => b.totalAmount - a.totalAmount),
-      totals: { amount: grandTotalAmount, items: grandTotalItems, vendorCount: Object.keys(vendorsMap).length, totalQty: grandTotalQty }
-    };
-  }, [items]);
-
-  // vendorTypes: { 업체명: ["가공", "구매"] } 형태로 다중 선택 지원
-  // 하위호환: 기존 문자열 값이면 배열로 마이그레이션
-  const getVendorTags = (vendorName) => {
-    const val = vendorTypes[vendorName];
-    if (!val) return [];
-    if (typeof val === 'string') return val.trim() ? [val.trim()] : [];
-    return val;
-  };
-
-  const allTagsList = useMemo(() => {
-    const set = new Set();
-    Object.values(vendorTypes).forEach(v => {
-      if (typeof v === 'string') { if (v.trim()) set.add(v.trim()); }
-      else if (Array.isArray(v)) v.forEach(t => { if (t.trim()) set.add(t.trim()); });
-    });
-    return [...set].sort();
-  }, [vendorTypes]);
-
-  const handleTypeChange = (vendorName, newTags) => {
-    const next = { ...vendorTypes, [vendorName]: newTags };
-    setVendorTypes(next);
-    triggerSave(items, next);
-  };
-  const handleItemUpdate = (id, field, value) => {
-    const next = items.map(item => item.id === id ? { ...item, [field]: value } : item);
-    setItems(next);
-    triggerSave(next, vendorTypes);
-  };
-
-  // ── 품목 팝업 상태 ──
-  const [vendorPopup, setVendorPopup] = useState(null); // vendor name
-  const vendorPopupItems = useMemo(() => {
-    if (!vendorPopup) return [];
-    return items.filter(i => i.supplier === vendorPopup);
-  }, [vendorPopup, items]);
-
-  // ── 부품 카탈로그 공급업체 필터 ──
-  const [supplierFilter, setSupplierFilter] = useState([]); // 빈 배열 = 전체 표시
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const filterRef = useRef(null);
-  useEffect(() => {
-    const close = (e) => { if (filterRef.current && !filterRef.current.contains(e.target)) setIsFilterOpen(false); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
-  const allSuppliers = useMemo(() => [...new Set(items.map(i => i.supplier))].sort(), [items]);
-  const filteredItems = useMemo(() => {
-    if (supplierFilter.length === 0) return items;
-    return items.filter(i => supplierFilter.includes(i.supplier));
-  }, [items, supplierFilter]);
-
-  const typeSummary = useMemo(() => {
-    const summary = {};
-    vendors.forEach(v => {
-      const tags = getVendorTags(v.name);
-      if (tags.length === 0) {
-        if (!summary['미지정']) summary['미지정'] = { type: '미지정', totalAmount: 0, vendorCount: 0 };
-        summary['미지정'].totalAmount += v.totalAmount;
-        summary['미지정'].vendorCount += 1;
-      } else {
-        tags.forEach(t => {
-          if (!summary[t]) summary[t] = { type: t, totalAmount: 0, vendorCount: 0 };
-          summary[t].totalAmount += v.totalAmount;
-          summary[t].vendorCount += 1;
-        });
-      }
-    });
-    return Object.values(summary).sort((a, b) => b.totalAmount - a.totalAmount);
-  }, [vendors, vendorTypes]);
-
-  const maxAmount = vendors.length > 0 ? vendors[0].totalAmount * productionQty : 1;
-  const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-  if (isLoading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f7f9fb]">
-      <div className="text-center">
-        <div className="text-4xl mb-4">⏳</div>
-        <p className="font-bold text-[#54647a]">데이터를 불러오는 중...</p>
-      </div>
-    </div>
-  );
-
-  return (
-    <>
-    {/* 저장 상태 인디케이터 */}
-    {saveStatus !== 'idle' && (
-      <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999,
-        background: saveStatus === 'saved' ? '#10b981' : saveStatus === 'error' ? '#ef4444' : '#6366f1',
-        color: 'white', padding: '8px 16px', borderRadius: 8, fontWeight: 700, fontSize: 13,
-        boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
-        {saveStatus === 'saving' ? '저장 중...' : saveStatus === 'saved' ? '저장됨 ✓' : '저장 실패 ✗'}
-      </div>
-    )}
-    {/* 데이터 초기화 버튼 (숨김 - 관리자용) */}
-    <button
-      style={{ position: 'fixed', bottom: 20, left: 20, zIndex: 9999, background: '#f1f5f9',
-        border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 12px', fontSize: 11, cursor: 'pointer', color: '#94a3b8' }}
-      onClick={() => {
-        if (confirm('데이터를 원본(하드코딩 기본값)으로 초기화할까요? 현재 수정 내용이 모두 사라집니다.')) {
-          const init = parseRawData();
-          setItems(init);
-          setVendorTypes({});
-          triggerSave(init, {});
-        }
-      }}
-    >초기화</button>
-
-    {/* ── 품목 리스트 팝업 ── */}
-    {vendorPopup && (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10000] flex items-center justify-center p-4" onClick={() => setVendorPopup(null)}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between p-6 border-b border-[#e6e8ea]">
-            <div>
-              <h3 className="text-lg font-extrabold text-[#111c2d] tracking-tight">{vendorPopup}</h3>
-              <p className="text-xs text-[#54647a] mt-1">{vendorPopupItems.length}개 부품 공급</p>
-            </div>
-            <button onClick={() => setVendorPopup(null)} className="p-2 hover:bg-[#f2f4f6] rounded-xl transition-colors"><X size={20} /></button>
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  
+  tableData.forEach((row, index) => {
+    const tr = document.createElement('tr');
+    tr.className = `border-b border-gray-200 transition-colors hover:bg-blue-50/30 ${row.active ? '' : 'table-row-inactive'}`;
+    tr.dataset.id = row.id;
+    
+    tr.innerHTML = `
+      <td class="p-1 text-center border-r border-gray-100">
+        <input type="checkbox" data-index="${index}" class="toggle-active w-3.5 h-3.5 cursor-pointer accent-blue-600" ${row.active ? 'checked' : ''}>
+      </td>
+      <td class="p-1 text-center border-r border-gray-100 text-gray-400 idx-cell">${index + 1}</td>
+      <td class="p-0 border-r border-gray-100">
+        <input type="text" data-index="${index}" class="cell-input name-input font-medium text-gray-800" value="${row.name}">
+      </td>
+      <td class="p-0 border-r border-gray-100">
+        <input type="text" data-index="${index}" class="cell-input num-input items-input text-right text-gray-600" value="${fmtNum(row.items)}">
+      </td>
+      <td class="p-0 border-r border-gray-100 bg-blue-50/10">
+        <input type="text" data-index="${index}" class="cell-input num-input unit-input text-right text-blue-800 font-bold" value="${fmtNum(row.unit)}">
+      </td>
+      <td class="p-1 text-right border-r border-gray-100 px-2 calc-total font-bold text-gray-900 bg-blue-50/30">
+        ${fmtMoney(row.unit * currentQty)}
+      </td>
+      <td class="p-0 border-r border-gray-100">
+        <input type="text" data-index="${index}" class="cell-input num-input prepay-input text-center text-purple-700 font-bold bg-purple-50/10" value="${row.prepayPct}">
+      </td>
+      <td class="p-1 text-right border-r border-gray-100 px-2 calc-prepay font-bold text-purple-900 bg-purple-50/30">
+        ₩0
+      </td>
+      <td class="p-1 border-r border-gray-100 pl-2">
+        <div class="flex items-center gap-1.5 w-full">
+          <div class="w-14 h-1.5 bg-gray-200 rounded-sm overflow-hidden flex-shrink-0">
+            <div class="bar-fill h-full transition-all duration-500 ease-out" style="width:0%"></div>
           </div>
-          <div className="overflow-y-auto flex-1 p-2">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-[#f7f9fb]">
-                <tr>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-left">부품명</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-center">수량</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-right">단가</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#79849a] text-right">후공정</th>
-                  <th className="px-4 py-3 text-[10px] font-bold uppercase text-[#111c2d] text-right">합계</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendorPopupItems.map((item, idx) => (
-                  <tr key={item.id} className="border-b border-[#f2f4f6] hover:bg-[#f7f9fb]">
-                    <td className="px-4 py-3 font-medium text-[#111c2d]">{item.name}</td>
-                    <td className="px-4 py-3 text-center font-mono text-xs text-[#54647a]">{item.qty}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-[#54647a]">{new Intl.NumberFormat('ko-KR').format(item.price)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-[#54647a]">{item.postProcess > 0 ? new Intl.NumberFormat('ko-KR').format(item.postProcess) : '-'}</td>
-                    <td className="px-4 py-3 text-right font-bold text-[#111c2d]">{new Intl.NumberFormat('ko-KR').format((item.price * item.qty) + item.postProcess)} 원</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-[#f7f9fb] font-bold">
-                <tr>
-                  <td className="px-4 py-3 text-[#111c2d]" colSpan={4}>합계</td>
-                  <td className="px-4 py-3 text-right text-[#111c2d]">{formatCurrency(vendorPopupItems.reduce((s, i) => s + (i.price * i.qty) + i.postProcess, 0))}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <span class="text-[10px] text-gray-500 w-10 text-right pct-text tabular-nums">0.0%</span>
         </div>
-      </div>
-    )}
+      </td>
+      <td class="p-1 text-center">
+        <button class="delete-btn text-gray-300 hover:text-red-500 transition-colors w-6 h-6 rounded hover:bg-red-50 flex items-center justify-center" data-index="${index}" title="항목 삭제">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
 
-    {
-    <div className="min-h-screen bg-[#f7f9fb] font-sans text-[#191c1e] flex overflow-hidden">
+// 단가 기준 내림차순 정렬 후 DOM 요소 위치만 변경 (포커스 유지용)
+function applySortToDOM() {
+  tableData.sort((a, b) => b.unit - a.unit);
+  
+  const tbody = document.getElementById('tableBody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  
+  // 데이터 정렬 순서대로 DOM 요소(행) 재배치
+  tableData.forEach((data, index) => {
+    const row = rows.find(r => r.dataset.id == data.id);
+    if(row) {
+      tbody.appendChild(row); // 이미 존재하는 DOM을 뒤로 옮김 (자동 재정렬 효과)
       
-      {/* Sidebar - Dark theme matching the prompt */}
-      <aside className="hidden md:flex flex-col w-64 bg-[#f2f4f6] border-r border-[#e6e8ea] shrink-0 sticky top-0 h-screen p-4">
-        <div className="mb-8 px-2 pt-2">
-          <h1 className="text-lg font-bold text-[#111c2d] tracking-tight">통합 원가 관리</h1>
-          <p className="text-xs font-semibold text-[#54647a] uppercase tracking-wider mt-1">부품 단가표</p>
-        </div>
-        <nav className="flex flex-col gap-2 flex-grow">
-          <button 
-            onClick={() => setActiveTab('summary')}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
-              activeTab === 'summary' 
-                ? 'bg-white text-[#111c2d] shadow-sm font-bold border border-[#e6e8ea]' 
-                : 'text-[#54647a] hover:bg-[#e6e8ea]/50 font-medium'
-            }`}
-          >
-            <LayoutDashboard size={18} />
-            <span className="text-sm">원가 개요</span>
-          </button>
-          <button 
-            onClick={() => setActiveTab('details')}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
-              activeTab === 'details' 
-                ? 'bg-white text-[#111c2d] shadow-sm font-bold border border-[#e6e8ea]' 
-                : 'text-[#54647a] hover:bg-[#e6e8ea]/50 font-medium'
-            }`}
-          >
-            <Edit size={18} />
-            <span className="text-sm">부품 카탈로그</span>
-          </button>
-        </nav>
-      </aside>
+      // 순번 셀 업데이트
+      row.querySelector('.idx-cell').textContent = index + 1;
+      
+      // 내부 입력창 및 버튼의 data-index 갱신 (이후 이벤트 처리를 위해 필수)
+      row.querySelectorAll('[data-index]').forEach(el => el.setAttribute('data-index', index));
+    }
+  });
+  
+  // 정렬 후 순위별 바 색상이 달라질 수 있으므로 토탈 업데이트 재호출
+  updateTotals();
+}
 
-      {/* Main Content Area */}
-      <main className="flex-grow flex flex-col h-screen overflow-y-auto">
+function updateTotals() {
+  const activeData = tableData.filter(d => d.active);
+  const activeUnitTotal = activeData.reduce((sum, d) => sum + d.unit, 0);
+  const activeItemsTotal = activeData.reduce((sum, d) => sum + d.items, 0);
+  const activePrepayTotal = activeData.reduce((sum, d) => sum + (d.unit * currentQty * (d.prepayPct / 100)), 0);
+  
+  const grandTotal = activeUnitTotal * currentQty;
+  
+  // 1,2,3위 순위 구하기 (색상 표시용)
+  const sortedActive = [...activeData].sort((a, b) => b.unit - a.unit);
+  const topIds = sortedActive.slice(0, 3).map(d => d.id);
+  const maxUnit = sortedActive.length > 0 ? sortedActive[0].unit : 1; 
+
+  // 1. 요약(Metrics) 업데이트
+  document.getElementById('m-total-cost').textContent = fmtMoney(grandTotal);
+  document.getElementById('m-prepay-cost').textContent = fmtMoney(activePrepayTotal);
+  document.getElementById('m-unit-cost').textContent = fmtMoney(activeUnitTotal);
+  document.getElementById('m-total-items').textContent = fmtNum(activeItemsTotal * currentQty);
+  document.getElementById('m-active-vendors').textContent = activeData.length;
+  document.getElementById('m-total-vendors').textContent = tableData.length;
+  
+  document.querySelectorAll('.m-sub-qty').forEach(el => el.textContent = \`수량 \${fmtNum(currentQty)}개 기준\`);
+
+  // 2. 푸터(Footer) 업데이트
+  document.getElementById('f-items').textContent = fmtNum(activeItemsTotal * currentQty);
+  document.getElementById('f-unit').textContent = fmtMoney(activeUnitTotal);
+  document.getElementById('f-total').textContent = fmtMoney(grandTotal);
+  document.getElementById('f-prepay').textContent = fmtMoney(activePrepayTotal);
+
+  // 3. 테이블 행별 데이터(수량별 금액, 선지급액, 막대) 동적 갱신
+  const tbody = document.getElementById('tableBody');
+  const rows = tbody.querySelectorAll('tr');
+  
+  tableData.forEach((row, i) => {
+    if(!rows[i]) return;
+    
+    // 금액 계산
+    const rowTotal = row.unit * currentQty;
+    const rowPrepay = rowTotal * (row.prepayPct / 100);
+    
+    rows[i].querySelector('.calc-total').textContent = row.active ? fmtMoney(rowTotal) : '-';
+    rows[i].querySelector('.calc-prepay').textContent = row.active ? fmtMoney(rowPrepay) : '-';
+    
+    // 비율 및 바 너비
+    const pctVal = (activeUnitTotal > 0 && row.active) ? (row.unit / activeUnitTotal * 100) : 0;
+    const barWidth = (maxUnit > 0 && row.active) ? (row.unit / maxUnit * 100) : 0;
+    
+    rows[i].querySelector('.pct-text').textContent = row.active ? pctVal.toFixed(1) + '%' : '0.0%';
+    
+    const barFill = rows[i].querySelector('.bar-fill');
+    barFill.style.width = \`\${Math.min(barWidth, 100)}%\`;
+    
+    // 순위에 따른 바 색상 배정
+    let barColorClass = 'bg-blue-300';
+    if (!row.active) barColorClass = 'bg-gray-300';
+    else if (topIds[0] === row.id) barColorClass = 'bg-[#3266ad]'; // 1위
+    else if (topIds[1] === row.id) barColorClass = 'bg-[#5A88C5]'; // 2위
+    else if (topIds[2] === row.id) barColorClass = 'bg-[#82AADB]'; // 3위
+    
+    barFill.className = \`bar-fill h-full transition-all duration-500 ease-out \${barColorClass}\`;
+  });
+
+  // 헤더 체크박스 상태 갱신
+  const checkAllBox = document.getElementById('checkAll');
+  if(tableData.length === 0) checkAllBox.checked = false;
+  else checkAllBox.checked = activeData.length === tableData.length;
+}
+
+// === 이벤트 리스너 설정 ===
+function setupEventListeners() {
+  const tbody = document.getElementById('tableBody');
+
+  // 체크박스 토글
+  tbody.addEventListener('change', (e) => {
+    if (e.target.classList.contains('toggle-active')) {
+      const idx = e.target.getAttribute('data-index');
+      tableData[idx].active = e.target.checked;
+      
+      const tr = e.target.closest('tr');
+      if (tableData[idx].active) tr.classList.remove('table-row-inactive');
+      else tr.classList.add('table-row-inactive');
+      
+      updateTotals();
+      saveToFirebase();
+    }
+  });
+
+  // 인라인 수정 (실시간 값 반영)
+  tbody.addEventListener('input', (e) => {
+    const idx = e.target.getAttribute('data-index');
+    if (!tableData[idx]) return;
+
+    if (e.target.classList.contains('name-input')) {
+      tableData[idx].name = e.target.value;
+      saveToFirebase();
+    } else if (e.target.classList.contains('num-input')) {
+      let val = parseNum(e.target.value);
+      
+      if (e.target.classList.contains('items-input')) tableData[idx].items = val;
+      if (e.target.classList.contains('unit-input')) tableData[idx].unit = val;
+      if (e.target.classList.contains('prepay-input')) tableData[idx].prepayPct = val; // 범위 보정은 focusout에서
+      
+      updateTotals(); // 실시간 수식 합계 변경
+      saveToFirebase();
+    }
+  });
+
+  // 단가 입력 완료 시 (엔터키 또는 포커스 아웃에 의한 확정) DOM 재정렬
+  tbody.addEventListener('change', (e) => {
+    if (e.target.classList.contains('unit-input')) {
+      applySortToDOM(); 
+    }
+  });
+
+  // 엑셀 스타일: 포커스 시 숫자만 표기, 콤마 제거
+  tbody.addEventListener('focusin', (e) => {
+    if (e.target.classList.contains('num-input')) {
+      if(!e.target.classList.contains('prepay-input')) {
+        e.target.value = parseNum(e.target.value) || ''; 
+      }
+      e.target.select();
+    }
+  });
+
+  // 엑셀 스타일: 포커스 아웃 시 서식 적용 & 범위 보정
+  tbody.addEventListener('focusout', (e) => {
+    if (e.target.classList.contains('num-input')) {
+      let val = parseNum(e.target.value);
+      
+      // 선지급률은 0~100 사이로 자동 보정
+      if (e.target.classList.contains('prepay-input')) {
+        val = Math.max(0, Math.min(100, val));
+        e.target.value = val;
         
-        {/* Header matching the design */}
-        <header className="bg-white flex flex-col sm:flex-row sm:items-center justify-between w-full px-6 lg:px-10 py-5 sticky top-0 z-30 border-b border-[#e6e8ea]">
-          <div className="flex flex-col gap-1 mb-4 sm:mb-0">
-            <div className="flex items-center gap-3">
-              <button onClick={() => window.location.href='../index.html'} className="p-2 bg-[#f2f4f6] rounded-xl hover:bg-[#e6e8ea] transition-colors" title="뒤로 가기">
-                <ArrowLeft size={20} className="text-[#111c2d]" />
-              </button>
-              <h2 className="text-xl font-bold tracking-tighter text-[#111c2d]">원가 산출 요약 장부</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#79849a]">통합 운영 장부</span>
-              <span className="w-1 h-1 rounded-full bg-[#c6c6cd]"></span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#79849a]">{today}</span>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            {/* Custom styled production quantity input */}
-            <div className="flex items-center gap-3 bg-[#f2f4f6] px-4 py-2 rounded-xl border border-[#e6e8ea]">
-              <label className="uppercase text-[10px] font-bold text-[#54647a] tracking-wider">생산 수량(목표)</label>
-              <input
-                type="number"
-                min="1"
-                value={productionQty}
-                onChange={(e) => setProductionQty(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-16 bg-transparent border-none focus:ring-0 font-black text-[#111c2d] text-right p-0 outline-none"
-              />
-            </div>
-          </div>
-        </header>
-
-        <div className="p-6 lg:p-10 flex flex-col gap-8 max-w-[1600px] mx-auto w-full">
-          
-          {/* KPI Section */}
-          <section className="grid grid-cols-1 md:grid-cols-12 gap-6">
-            {/* Unit Cost - Light Box */}
-            <div className="md:col-span-4 bg-white p-8 rounded-2xl flex flex-col justify-between border border-[#e6e8ea] shadow-sm">
-              <span className="uppercase text-[10px] font-bold tracking-[0.2em] text-[#54647a]">총 부품 원가 (단일 기준)</span>
-              <div className="mt-6">
-                <span className="text-4xl lg:text-5xl font-extrabold tracking-tighter text-[#111c2d]">
-                  {formatCurrency(totals.amount)}
-                </span>
-                <div className="flex items-center gap-1 mt-3 text-[#54647a]">
-                  <span className="text-xs font-medium bg-[#f2f4f6] px-2 py-1 rounded">단일 기기 제작 기준</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Total Production Cost - Dark Impact Box */}
-            <div className="md:col-span-5 bg-[#111c2d] p-8 rounded-2xl flex flex-col justify-between shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-10">
-                <Calculator size={120} className="text-white" />
-              </div>
-              <span className="uppercase text-[10px] font-bold tracking-[0.2em] text-[#79849a] relative z-10">총 목표 생산 원가</span>
-              <div className="mt-6 relative z-10">
-                <span className="text-4xl lg:text-5xl font-extrabold tracking-tighter text-white">
-                  {formatCurrency(totals.amount * productionQty)}
-                </span>
-                <p className="text-xs text-[#79849a] mt-3 font-medium uppercase tracking-wider">{productionQty}대 생산 기준 예상 산출액</p>
-              </div>
-            </div>
-
-            {/* Inventory Logistics - Clean Box */}
-            <div className="md:col-span-3 bg-white p-8 rounded-2xl flex flex-col justify-between border border-[#e6e8ea] shadow-sm">
-              <span className="uppercase text-[10px] font-bold tracking-[0.2em] text-[#54647a]">재고 및 부품 품목 현황</span>
-              <div className="mt-6">
-                <span className="text-4xl font-extrabold text-[#111c2d] tracking-tight">
-                  {new Intl.NumberFormat('ko-KR').format(totals.totalQty * productionQty)} <span className="text-xl font-bold text-[#79849a]">개</span>
-                </span>
-                <p className="text-xs text-[#54647a] mt-3 tracking-tight font-medium">검증된 <span className="font-bold text-[#111c2d]">{totals.vendorCount}</span>개의 공급업체 유지</p>
-              </div>
-            </div>
-          </section>
-
-          {/* Conditional Rendering based on Tabs */}
-          {activeTab === 'summary' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in duration-500">
-              
-              {/* Left Column: Top Drivers & Health */}
-              <div className="lg:col-span-1 flex flex-col gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#e6e8ea]">
-                  <div className="flex justify-between items-center mb-8">
-                    <h3 className="font-bold text-lg text-[#111c2d] tracking-tight">지출 상위 5개 공급업체</h3>
-                  </div>
-                  <div className="space-y-6">
-                    {vendors.slice(0, 5).map((v, idx) => (
-                      <div key={v.name} className="space-y-2">
-                        <div className="flex justify-between text-[11px] font-bold uppercase text-[#54647a]">
-                          <span className="truncate max-w-[140px]" title={v.name}>{v.name}</span>
-                          <span className="text-[#111c2d]">{formatCurrency(v.totalAmount * productionQty)}</span>
-                        </div>
-                        <div className="h-2 w-full bg-[#f2f4f6] rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-[#111c2d] rounded-full transition-all duration-1000 ease-out" 
-                            style={{ width: `${maxAmount > 0 ? ((v.totalAmount * productionQty) / maxAmount) * 100 : 0}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Vendor Types Summary */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#e6e8ea]">
-                  <h3 className="font-bold text-lg text-[#111c2d] tracking-tight mb-6">분류별 지출 요약</h3>
-                  {typeSummary.length === 1 && typeSummary[0].type === '미지정' ? (
-                    <div className="text-center p-6 text-sm text-[#79849a] bg-[#f7f9fb] rounded-xl border border-dashed border-[#c6c6cd]">
-                      우측 표에서 종류를 입력하면<br/>여기에 카테고리별 요약이 표시됩니다.
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {typeSummary.map(t => (
-                        <div key={t.type} className="flex items-center justify-between p-4 bg-[#f7f9fb] rounded-xl border border-[#e6e8ea]">
-                          <div>
-                            <div className="font-bold text-[#111c2d] flex items-center gap-2">
-                              {t.type === '미지정' ? <span className="text-[#79849a]">분류 안 됨</span> : t.type}
-                            </div>
-                            <p className="text-xs text-[#54647a] mt-1">{t.vendorCount}개 업체</p>
-                          </div>
-                          <div className="font-extrabold text-[#111c2d]">
-                            {formatCurrency(t.totalAmount * productionQty)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Right Column: Ledger Table */}
-              <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-[#e6e8ea] flex flex-col">
-                <div className="p-8 pb-4 flex justify-between items-end border-b border-[#e6e8ea]">
-                  <div>
-                    <h3 className="font-extrabold text-2xl text-[#111c2d] tracking-tight">공급업체별 장부 (외주 현황)</h3>
-                    <p className="text-sm text-[#54647a] mt-1">공급업체에 따른 디테일한 가격 구성 내역입니다.</p>
-                  </div>
-                </div>
-                
-                <div className="overflow-x-auto flex-grow">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-[#f7f9fb]">
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] border-b border-[#e6e8ea]">업체명</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] border-b border-[#e6e8ea] text-center">품목 수</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] border-b border-[#e6e8ea] text-right">단일가 합계</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-[#111c2d] border-b border-[#e6e8ea] text-right bg-[#f2f4f6]">총 금액 ({productionQty})</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] border-b border-[#e6e8ea] text-center">설정 분류</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {vendors.map((v, idx) => (
-                        <tr key={v.name} className="hover:bg-[#f7f9fb] transition-colors border-b border-[#f2f4f6] last:border-0">
-                          <td className="px-6 py-4 font-semibold text-[#111c2d] truncate max-w-[200px]" title={v.name}>
-                            {v.name}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => setVendorPopup(v.name)}
-                              className="inline-flex items-center gap-1 px-3 py-1 bg-[#f2f4f6] hover:bg-[#e6e8ea] text-[#111c2d] rounded-lg font-bold text-xs transition-colors cursor-pointer border border-[#e6e8ea] hover:border-[#111c2d]"
-                              title="클릭하여 부품 목록 보기"
-                            >
-                              {v.itemCount}
-                              <ArrowRight size={12} className="text-[#79849a]" />
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 text-right text-[#54647a]">
-                            {formatCurrency(v.totalAmount)}
-                          </td>
-                          <td className="px-6 py-4 text-right font-bold text-[#111c2d] bg-[#f2f4f6]/50">
-                            {formatCurrency(v.totalAmount * productionQty)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <MultiSelectTags
-                              selected={getVendorTags(v.name)}
-                              allTags={allTagsList}
-                              onChange={(tags) => handleTypeChange(v.name, tags)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Details Tab */}
-          {activeTab === 'details' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-[#e6e8ea] overflow-hidden animate-in fade-in duration-500 flex flex-col">
-              <div className="p-8 pb-6 border-b border-[#e6e8ea] flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-                <div>
-                  <h3 className="font-extrabold text-2xl text-[#111c2d] tracking-tight">부품 카탈로그 및 실시간 편집장</h3>
-                  <p className="text-sm text-[#54647a] mt-2">아래 표의 아무 셀이나 클릭하면 실시간으로 데이터를 수정할 수 있습니다.</p>
-                </div>
-                {/* 공급업체 필터 (엑셀 스타일) */}
-                <div ref={filterRef} className="relative">
-                  <button
-                    onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl border transition-colors ${
-                      supplierFilter.length > 0
-                        ? 'bg-[#111c2d] text-white border-[#111c2d]'
-                        : 'bg-white text-[#54647a] border-[#e6e8ea] hover:border-[#111c2d]'
-                    }`}
-                  >
-                    <Filter size={14} />
-                    {supplierFilter.length > 0 ? `${supplierFilter.length}개 업체 필터` : '공급업체 필터'}
-                    <ChevronDown size={14} />
-                  </button>
-                  {isFilterOpen && (
-                    <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-[#e6e8ea] w-64 z-50 max-h-80 overflow-hidden flex flex-col">
-                      <div className="p-3 border-b border-[#e6e8ea] flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase text-[#79849a]">공급업체 선택</span>
-                        <button
-                          onClick={() => { setSupplierFilter([]); setIsFilterOpen(false); }}
-                          className="text-[10px] font-bold text-[#111c2d] hover:underline"
-                        >{supplierFilter.length > 0 ? '전체 해제' : '전체 선택'}</button>
-                      </div>
-                      <div className="overflow-y-auto flex-1 p-1">
-                        {allSuppliers.map(s => {
-                          const active = supplierFilter.includes(s);
-                          const count = items.filter(i => i.supplier === s).length;
-                          return (
-                            <button
-                              key={s}
-                              onClick={() => {
-                                if (active) setSupplierFilter(supplierFilter.filter(x => x !== s));
-                                else setSupplierFilter([...supplierFilter, s]);
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#f7f9fb] transition-colors text-left"
-                            >
-                              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${active ? 'bg-[#111c2d] border-[#111c2d]' : 'border-[#d1d5db]'}`}>
-                                {active && <Check size={10} className="text-white" />}
-                              </div>
-                              <span className="text-xs font-medium text-[#111c2d] truncate flex-1">{s}</span>
-                              <span className="text-[10px] text-[#79849a] font-mono">{count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {supplierFilter.length > 0 && (
-                <div className="px-8 py-2 bg-[#f7f9fb] border-b border-[#e6e8ea] flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-bold text-[#79849a] uppercase">필터:</span>
-                  {supplierFilter.map(s => (
-                    <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#111c2d] text-white rounded-md text-[10px] font-bold">
-                      {s}
-                      <button onClick={() => setSupplierFilter(supplierFilter.filter(x => x !== s))} className="hover:opacity-60"><X size={10} /></button>
-                    </span>
-                  ))}
-                  <button onClick={() => setSupplierFilter([])} className="text-[10px] font-bold text-[#79849a] hover:text-[#111c2d] ml-2">전체 보기</button>
-                </div>
-              )}
-              
-              <div className="overflow-x-auto max-h-[calc(100vh-350px)]">
-                <table className="w-full text-left border-collapse relative">
-                  <thead className="sticky top-0 bg-[#f7f9fb] z-10 shadow-sm outline outline-1 outline-[#e6e8ea]">
-                    <tr>
-                      <th className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] text-center w-12">번호</th>
-                      <th className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] min-w-[250px]">부품/품종명</th>
-                      <th className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] text-center w-24">수량</th>
-                      <th className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] text-right w-32">단가</th>
-                      <th className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] text-right w-32">후공정 처리비</th>
-                      <th className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-[#111c2d] text-right w-36 bg-[#f2f4f6]">단가 총계</th>
-                      <th className="px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-[#79849a] w-48">담당 공급업체</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    {filteredItems.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-[#f7f9fb] border-b border-[#f2f4f6] focus-within:bg-[#f2f4f6]/50 transition-colors">
-                        <td className="px-4 py-3 text-center text-[#79849a] font-mono text-xs">{String(idx + 1).padStart(2, '0')}</td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => handleItemUpdate(item.id, 'name', e.target.value)}
-                            className="w-full bg-transparent border-b border-transparent focus:border-[#111c2d] px-2 py-1 outline-none transition-colors font-medium text-[#111c2d]"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.qty === 0 ? '' : item.qty}
-                            onChange={(e) => handleItemUpdate(item.id, 'qty', e.target.value === '' ? 0 : Number(e.target.value))}
-                            className="w-full text-center border border-[#e6e8ea] rounded p-1 focus:border-[#111c2d] outline-none bg-white font-mono text-xs"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.price === 0 ? '' : item.price}
-                            onChange={(e) => handleItemUpdate(item.id, 'price', e.target.value === '' ? 0 : Number(e.target.value))}
-                            className="w-full text-right border border-[#e6e8ea] rounded p-1 focus:border-[#111c2d] outline-none bg-white font-mono text-xs"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.postProcess === 0 ? '' : item.postProcess}
-                            onChange={(e) => handleItemUpdate(item.id, 'postProcess', e.target.value === '' ? 0 : Number(e.target.value))}
-                            className="w-full text-right border border-[#e6e8ea] rounded p-1 focus:border-[#111c2d] outline-none bg-white font-mono text-xs"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-[#111c2d] bg-[#f2f4f6]/30">
-                          {new Intl.NumberFormat('ko-KR').format((item.price * item.qty) + item.postProcess)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            value={item.supplier}
-                            onChange={(e) => handleItemUpdate(item.id, 'supplier', e.target.value)}
-                            className="w-full bg-transparent border-b border-transparent focus:border-[#111c2d] px-2 py-1 outline-none transition-colors text-[#54647a]"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {supplierFilter.length > 0 && (
-                <div className="px-8 py-3 bg-[#f7f9fb] border-t border-[#e6e8ea] flex items-center justify-between">
-                  <span className="text-xs text-[#54647a]">필터된 부품: <strong className="text-[#111c2d]">{filteredItems.length}</strong>개 / 전체 {items.length}개</span>
-                  <span className="text-xs font-bold text-[#111c2d]">필터 합계: {formatCurrency(filteredItems.reduce((s, i) => s + (i.price * i.qty) + i.postProcess, 0))}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-        </div>
-      </main>
-      
-      {/* Mobile Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md p-4 flex justify-around items-center z-50 border-t border-[#e6e8ea]">
-        <button 
-          onClick={() => setActiveTab('summary')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'summary' ? 'text-[#111c2d]' : 'text-[#79849a]'}`}
-        >
-          <LayoutDashboard size={20} />
-          <span className="text-[10px] font-bold uppercase tracking-wider">원가 개요</span>
-        </button>
-        <button 
-          onClick={() => setActiveTab('details')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'details' ? 'text-[#111c2d]' : 'text-[#79849a]'}`}
-        >
-          <Edit size={20} />
-          <span className="text-[10px] font-bold uppercase tracking-wider">카탈로그</span>
-        </button>
-      </nav>
-    </div>
+        const idx = e.target.getAttribute('data-index');
+        tableData[idx].prepayPct = val;
+        updateTotals();
+        saveToFirebase();
+      } else {
+        // 단가/품목수는 천 단위 콤마 추가
+        e.target.value = fmtNum(val);
+      }
     }
-    </>
-  );
+  });
+
+  // 삭제 버튼 클릭
+  tbody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.delete-btn');
+    if (btn) {
+      const idx = btn.getAttribute('data-index');
+      tableData.splice(idx, 1);
+      renderTable(); 
+      updateTotals();
+      saveToFirebase();
+    }
+  });
+
+  // 일괄 선지급률 적용 버튼
+  document.getElementById('btnBatchPrepay').addEventListener('click', () => {
+    let val = parseNum(document.getElementById('batchPrepayInput').value);
+    val = Math.max(0, Math.min(100, val)); // 0~100 사이 보정
+    document.getElementById('batchPrepayInput').value = val;
+    
+    // 데이터 변경
+    tableData.forEach(d => d.prepayPct = val);
+    
+    // 화면 내의 모든 인풋 값 업데이트
+    tbody.querySelectorAll('.prepay-input').forEach(input => {
+      input.value = val;
+    });
+    
+    updateTotals();
+    saveToFirebase();
+  });
+
+  // 수량 직접 입력 변경
+  const qtyInput = document.getElementById('qtyInput');
+  qtyInput.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    if (v > 0) {
+      currentQty = v;
+      updateTotals();
+      updatePresetButtons();
+      saveToFirebase();
+    }
+  });
+
+  // 수량 프리셋 버튼 클릭
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const val = parseInt(e.target.getAttribute('data-val'));
+      currentQty = val;
+      qtyInput.value = val;
+      updateTotals();
+      updatePresetButtons();
+      saveToFirebase();
+    });
+  });
+
+  // 전체 선택/해제
+  document.getElementById('checkAll').addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    tableData.forEach(d => d.active = isChecked);
+    renderTable(); 
+    updateTotals();
+    saveToFirebase();
+  });
+
+  // 항목 추가 버튼
+  document.getElementById('addBtn').addEventListener('click', () => {
+    tableData.push({
+      id: Date.now(),
+      name: '',
+      items: 1,
+      unit: 0,
+      prepayPct: 0,
+      active: true
+    });
+    
+    // 추가 후 정렬 무너지지 않게 한번 정렬(새 항목은 0원이므로 제일 아래로 감) 후 렌더
+    tableData.sort((a, b) => b.unit - a.unit);
+    renderTable();
+    updateTotals();
+    saveToFirebase();
+    
+    // 새로 추가된 행(맨 아래)의 첫 번째 입력창으로 포커스
+    const newInputs = tbody.lastElementChild.querySelectorAll('input[type="text"]');
+    if(newInputs.length > 0) newInputs[0].focus();
+    
+    // 스크롤 맨 아래로 이동
+    tbody.parentElement.parentElement.scrollTop = tbody.parentElement.parentElement.scrollHeight;
+  });
 }
 
-const root = createRoot(document.getElementById('root'));
-root.render(<App />);
-  </script>
+// 상단 프리셋 버튼 활성화 UI
+function updatePresetButtons() {
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    const val = parseInt(btn.getAttribute('data-val'));
+    if (val === currentQty) {
+      btn.classList.add('bg-blue-100', 'border-blue-300', 'text-blue-700', 'font-bold');
+      btn.classList.remove('bg-white', 'text-gray-700');
+    } else {
+      btn.classList.remove('bg-blue-100', 'border-blue-300', 'text-blue-700', 'font-bold');
+      btn.classList.add('bg-white', 'text-gray-700');
+    }
+  });
+}
+
+// 시스템 부팅
+init();
+</script>
 </body>
 </html>
