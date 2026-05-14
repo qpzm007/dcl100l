@@ -64,6 +64,97 @@
 
     /* 정렬 애니메이션 대비 클래스 */
     #tableBody tr { transition: background-color 0.2s ease; }
+
+    /* 인쇄용 스타일 */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 15mm;
+      }
+      body {
+        display: block !important;
+        height: auto !important;
+        overflow: visible !important;
+        background-color: white !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      /* 불필요한 flex, height 제한, overflow 제한 해제 (페이지 잘림 방지) */
+      .h-screen, .flex-1, .flex, .overflow-hidden, .overflow-auto {
+        display: block !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      /* 특정 flex 요소 유지할 것들 */
+      .flex-wrap, .items-center, .gap-3, .gap-4, .gap-2, .grid {
+        display: flex !important;
+      }
+      .grid {
+        display: grid !important;
+      }
+      
+      .max-w-\[1400px\] {
+        max-width: none !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      
+      /* 인쇄 시 숨길 요소들 */
+      .hide-on-print,
+      #presets,
+      #addBtn,
+      #btnBatchPrepay,
+      .delete-btn,
+      #loadingScreen,
+      #saveIndicator,
+      .toggle-active,
+      input[type="checkbox"] {
+        display: none !important;
+      }
+      
+      /* 테이블 글자 깨짐 및 중복 방지 */
+      table {
+        page-break-inside: auto;
+        table-layout: auto !important;
+        width: 100% !important;
+      }
+      tr {
+        page-break-inside: avoid; /* 행 중간에 잘리지 않게 */
+        page-break-after: auto;
+      }
+      thead {
+        display: table-header-group;
+      }
+      tfoot {
+        display: table-footer-group;
+      }
+      th, td {
+        white-space: nowrap !important;
+        word-break: keep-all !important;
+      }
+      
+      /* Sticky 해제 */
+      .sticky {
+        position: static !important;
+      }
+      
+      /* 입력창 스타일 리셋 */
+      input.cell-input {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        color: inherit !important;
+      }
+      input[type="number"] {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+    }
   </style>
 </head>
 <body class="bg-gray-200 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
@@ -75,11 +166,19 @@
     <div class="px-3 py-2 border-b border-gray-300 bg-gray-50 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
       <div class="flex items-center gap-4">
         <!-- 메인으로 돌아가기 버튼 추가 -->
-        <button onclick="window.location.href='../index.html'" class="px-3 py-1.5 bg-slate-800 text-white text-sm font-bold rounded hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2 mr-2">
+        <button onclick="window.location.href='../index.html'" class="px-3 py-1.5 bg-slate-800 text-white text-sm font-bold rounded hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2 mr-2 hide-on-print">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
               <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
             </svg>
             메인화면
+        </button>
+        <!-- 프린트 버튼 추가 -->
+        <button onclick="window.print()" class="px-3 py-1.5 bg-blue-600 text-white text-sm font-bold rounded hover:bg-blue-500 transition-colors shadow-sm flex items-center gap-2 mr-4 hide-on-print">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M5 1a2 2 0 0 0-2 2v1h10V3a2 2 0 0 0-2-2H5zm6 8H5a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1z"/>
+              <path d="M0 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-1v-2a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2H2a2 2 0 0 1-2-2V7zm2.5 1a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/>
+            </svg>
+            인쇄
         </button>
         <!-- 수량 블록 -->
         <div class="flex items-center gap-2">
@@ -97,7 +196,7 @@
         </div>
 
         <!-- 일괄 선지급률 블록 -->
-        <div class="flex items-center gap-2 border-l border-gray-300 pl-4">
+        <div class="flex items-center gap-2 border-l border-gray-300 pl-4 hide-on-print">
           <span class="text-sm font-semibold text-gray-700">일괄 선지급률 지정</span>
           <input type="number" id="batchPrepayInput" value="50" min="0" max="100" class="w-14 text-center text-sm font-bold text-purple-700 border border-purple-200 bg-purple-50 rounded px-2 py-1 focus:outline-none focus:border-purple-500" />
           <span class="text-sm text-gray-600">%</span>
@@ -105,7 +204,7 @@
         </div>
       </div>
 
-      <div class="text-xs text-gray-500">
+      <div class="text-xs text-gray-500 hide-on-print">
         * 단가를 수정하면 <span class="font-bold text-blue-500">비용순으로 자동 정렬</span>됩니다.
       </div>
     </div>
