@@ -234,7 +234,7 @@
             id: `part_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             no: '', name: '', stock: 0,
             reqQty: 1, manufacturer: '', expectedDate: '', remarks: '',
-            x: 50, y: 50, size: 32, fSize: 15, isLocked: false,
+            x: 50, y: 50, targetX: null, targetY: null, size: 32, fSize: 15, isLocked: false,
             wNo: 4, wName: 13, wStock: 3 // 기본 너비 배율
         });
 
@@ -360,6 +360,7 @@
             const [currentAsmId, setCurrentAsmId] = useState(null);
             const [isSupplyMode, setIsSupplyMode] = useState(false);
             const [isOrderStatusMode, setIsOrderStatusMode] = useState(false);
+            const [isArrowMode, setIsArrowMode] = useState(false);
             const [activePopoverPartId, setActivePopoverPartId] = useState(null);
             const [popoverPos, setPopoverPos] = useState({ x: 0, y: 0 });
 
@@ -986,7 +987,12 @@
                 if (part.isLocked || !isAdmin) return;
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
-                setDragState({ id: part.id, x: part.x, y: part.y });
+                
+                if (isArrowMode) {
+                    setDragState({ id: part.id, x: part.targetX ?? part.x, y: part.targetY ?? part.y, type: 'target' });
+                } else {
+                    setDragState({ id: part.id, x: part.x, y: part.y, type: 'badge' });
+                }
             };
 
             const handlePointerMove = (e) => {
@@ -1002,8 +1008,24 @@
             const handlePointerUp = (e) => {
                 if (dragState) {
                     e.currentTarget.releasePointerCapture(e.pointerId);
-                    updatePart(dragState.id, 'x', dragState.x);
-                    updatePart(dragState.id, 'y', dragState.y);
+                    if (dragState.type === 'badge') {
+                        updatePart(dragState.id, 'x', dragState.x);
+                        updatePart(dragState.id, 'y', dragState.y);
+                    } else if (dragState.type === 'target') {
+                        const part = currentAsm.parts.find(p => p.id === dragState.id);
+                        if (part) {
+                            const dx = dragState.x - part.x;
+                            const dy = dragState.y - part.y;
+                            // 배지 제자리로 화살표 끝부분을 드래그해 놓으면 화살표 삭제
+                            if (dx * dx + dy * dy < 1.0) {
+                                updatePart(dragState.id, 'targetX', null);
+                                updatePart(dragState.id, 'targetY', null);
+                            } else {
+                                updatePart(dragState.id, 'targetX', dragState.x);
+                                updatePart(dragState.id, 'targetY', dragState.y);
+                            }
+                        }
+                    }
                     setDragState(null);
                 }
             };
@@ -1324,7 +1346,7 @@
                                 </div>
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => { setIsOrderStatusMode(!isOrderStatusMode); setActivePopoverPartId(null); }}
+                                        onClick={() => { setIsOrderStatusMode(!isOrderStatusMode); setActivePopoverPartId(null); setIsArrowMode(false); }}
                                         className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isOrderStatusMode ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'}`}
                                         title={isOrderStatusMode ? '발주현황 끄기' : '발주현황 켜기'}
                                     >
@@ -1332,7 +1354,15 @@
                                         {isOrderStatusMode ? '발주현황 ON' : '발주현황'}
                                     </button>
                                     <button
-                                        onClick={() => { setIsSupplyMode(!isSupplyMode); setActivePopoverPartId(null); }}
+                                        onClick={() => { setIsArrowMode(!isArrowMode); setActivePopoverPartId(null); setIsSupplyMode(false); }}
+                                        className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isArrowMode ? 'bg-green-600 text-white border-green-700' : 'bg-white text-green-600 border-green-200 hover:bg-green-50'}`}
+                                        title={isArrowMode ? '화살표 모드 끄기' : '화살표 지정 모드 시작'}
+                                    >
+                                        <i className={`fa-solid fa-location-arrow`}></i>
+                                        {isArrowMode ? '화살표 편집 ON' : '화살표 편집'}
+                                    </button>
+                                    <button
+                                        onClick={() => { setIsSupplyMode(!isSupplyMode); setActivePopoverPartId(null); setIsArrowMode(false); }}
                                         className={`px-3 py-1.5 rounded text-sm transition-all flex items-center gap-2 font-bold border shadow-sm ${isSupplyMode ? 'bg-orange-600 text-white border-orange-700' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}
                                         title={isSupplyMode ? '제작처 모드 끄기' : '제작처 보기 및 입력 모드 시작'}
                                     >
@@ -1389,16 +1419,55 @@
                                                 e.target.src = "https://placehold.co/800x600/e2e8f0/94a3b8?text=이미지를+업로드해주세요";
                                             }}
                                         />
+                                        <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
+                                            <defs>
+                                                <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                                                    <polygon points="0 0, 8 3, 0 6" fill="#3b82f6" />
+                                                </marker>
+                                            </defs>
+                                            {currentAsm.parts.map(part => {
+                                                const bx = dragState?.id === part.id && dragState.type === 'badge' ? dragState.x : part.x;
+                                                const by = dragState?.id === part.id && dragState.type === 'badge' ? dragState.y : part.y;
+                                                const tx = dragState?.id === part.id && dragState.type === 'target' ? dragState.x : part.targetX;
+                                                const ty = dragState?.id === part.id && dragState.type === 'target' ? dragState.y : part.targetY;
+
+                                                if (tx == null || ty == null) return null;
+                                                
+                                                // 타겟과 배지 사이의 가로/세로 거리 비교
+                                                const dx = Math.abs(tx - bx);
+                                                const dy = Math.abs(ty - by);
+                                                
+                                                if (dx > dy) {
+                                                    // 가로 거리가 더 멀면 -> 세로로 먼저 이동하고 마지막에 가로로 꽂힘 (좌/우 방향 화살표)
+                                                    return (
+                                                        <g key={`arrow-${part.id}`}>
+                                                            <line x1={`${bx}%`} y1={`${by}%`} x2={`${bx}%`} y2={`${ty}%`} stroke="#3b82f6" strokeWidth="2.5" />
+                                                            <line x1={`${bx}%`} y1={`${ty}%`} x2={`${tx}%`} y2={`${ty}%`} stroke="#3b82f6" strokeWidth="2.5" markerEnd="url(#arrowhead)" />
+                                                        </g>
+                                                    );
+                                                } else {
+                                                    // 세로 거리가 더 멀면 -> 가로로 먼저 이동하고 마지막에 세로로 꽂힘 (상/하 방향 화살표)
+                                                    return (
+                                                        <g key={`arrow-${part.id}`}>
+                                                            <line x1={`${bx}%`} y1={`${by}%`} x2={`${tx}%`} y2={`${by}%`} stroke="#3b82f6" strokeWidth="2.5" />
+                                                            <line x1={`${tx}%`} y1={`${by}%`} x2={`${tx}%`} y2={`${ty}%`} stroke="#3b82f6" strokeWidth="2.5" markerEnd="url(#arrowhead)" />
+                                                        </g>
+                                                    );
+                                                }
+                                            })}
+                                        </svg>
+
                                     {currentAsm.parts.map((part, index) => {
-                                        const isDragging = dragState?.id === part.id;
-                                        const posX = isDragging ? dragState.x : part.x;
-                                        const posY = isDragging ? dragState.y : part.y;
+                                        const isDraggingBadge = dragState?.id === part.id && dragState.type === 'badge';
+                                        const isDraggingTarget = dragState?.id === part.id && dragState.type === 'target';
+                                        const posX = isDraggingBadge ? dragState.x : part.x;
+                                        const posY = isDraggingBadge ? dragState.y : part.y;
                                         const isSelected = selectedPartId === part.id;
                                         const stock = parseInt(part.stock) || 0;
                                         const isLocked = part.isLocked || false;
                                         return (
+                                            <React.Fragment key={part.id}>
                                             <div
-                                                key={part.id}
                                                 data-badge="true"
                                                 onPointerDown={(e) => handlePointerDown(e, part)}
                                                 onPointerMove={handlePointerMove}
@@ -1406,13 +1475,13 @@
                                                 onPointerCancel={handlePointerUp}
                                                 className={`absolute transform -translate-x-1/2 -translate-y-1/2 select-none touch-none
                                                     ${isSelected ? 'z-50' : 'z-10'}
-                                                    ${isDragging ? 'opacity-90' : ''}
+                                                    ${isDraggingBadge ? 'opacity-90' : ''}
                                                     ${isLocked ? 'cursor-default' : 'cursor-move'}
                                                 `}
                                                 style={{
                                                     left: `${posX}%`,
                                                     top: `${posY}%`,
-                                                    transition: isDragging ? 'none' : 'all 0.1s ease-out',
+                                                    transition: isDraggingBadge ? 'none' : 'all 0.1s ease-out',
                                                 }}
                                             >
                                                 {/* SVG를 사용하여 폰트 클램핑 문제 해결 및 레이아웃 최적화 */}
@@ -1489,6 +1558,7 @@
                                                     );
                                                 })()}
                                             </div>
+                                            </React.Fragment>
                                         );
                                     })}
                                     </div>
