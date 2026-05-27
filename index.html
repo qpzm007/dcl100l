@@ -913,7 +913,9 @@
                     
                     // Firebase Storage 업로드는 권한 및 CORS 문제로 무한 대기(Hang)가 발생할 수 있으므로,
                     // 압축된 Base64(WebP) 데이터를 직접 Firestore에 저장합니다.
-                    await updateAssembly(currentAsmId, 'imageUrl', finalUrl);
+                    const nextAssemblies = assemblies.map(a => a.id === currentAsmId ? { ...a, imageUrl: finalUrl } : a);
+                    setAssemblies(nextAssemblies);
+                    await saveToFirebase(nextAssemblies);
                     
                     setPendingAiImage(null);
                     alert("도면 이미지가 성공적으로 변경되었습니다.");
