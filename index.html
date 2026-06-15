@@ -895,10 +895,10 @@
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     
-                    // 최대 너비 1920px 제한
+                    // 최대 너비 1200px 제한 (Firestore 1MB 용량 한도 초과 방지)
                     let width = img.width;
                     let height = img.height;
-                    const MAX_WIDTH = 1920;
+                    const MAX_WIDTH = 1200;
                     if (width > MAX_WIDTH) {
                         height = Math.round((height * MAX_WIDTH) / width);
                         width = MAX_WIDTH;
@@ -908,8 +908,8 @@
                     canvas.height = height;
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    // WebP 포맷으로 압축 (용량 크게 감소)
-                    let finalUrl = canvas.toDataURL('image/webp', 0.8);
+                    // WebP 포맷으로 압축 (품질 0.5로 용량 최소화)
+                    let finalUrl = canvas.toDataURL('image/webp', 0.5);
                     
                     // Firebase Storage 업로드는 권한 및 CORS 문제로 무한 대기(Hang)가 발생할 수 있으므로,
                     // 압축된 Base64(WebP) 데이터를 직접 Firestore에 저장합니다.
