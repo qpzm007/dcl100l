@@ -167,17 +167,60 @@
                     return res.json();
                 } else {
                     const doc = await db.collection('app').doc('state').get();
-                    return doc.exists ? doc.data() : { assemblies: [], currentAsmId: null, products: [], currentProductId: null, finance: {} };
+                    const state = doc.exists ? doc.data() : { assemblies: [], currentAsmId: null, products: [], currentProductId: null, finance: {} };
+                    
+                    try {
+                        const imagesSnap = await db.collection('images').get();
+                        const imagesMap = {};
+                        imagesSnap.forEach(imgDoc => { imagesMap[imgDoc.id] = imgDoc.data().imageUrl; });
+                        
+                        let needsMigration = false;
+                        if (state.assemblies) {
+                            state.assemblies.forEach(asm => {
+                                if (asm.imageUrl && asm.imageUrl.startsWith('data:')) {
+                                    imagesMap[asm.id] = asm.imageUrl;
+                                    needsMigration = true;
+                                } else if (imagesMap[asm.id]) {
+                                    asm.imageUrl = imagesMap[asm.id];
+                                }
+                            });
+                        }
+                        
+                        if (needsMigration) {
+                            const batch = db.batch();
+                            state.assemblies.forEach(asm => {
+                                if (asm.imageUrl && asm.imageUrl.startsWith('data:')) {
+                                    const imgRef = db.collection('images').doc(asm.id);
+                                    batch.set(imgRef, { imageUrl: asm.imageUrl });
+                                    asm.imageUrl = 'FIREBASE_STORAGE';
+                                }
+                            });
+                            const stateRef = db.collection('app').doc('state');
+                            batch.update(stateRef, { assemblies: state.assemblies });
+                            await batch.commit();
+                            
+                            state.assemblies.forEach(asm => {
+                                if (imagesMap[asm.id]) asm.imageUrl = imagesMap[asm.id];
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('Failed to load or migrate images collection', e);
+                    }
+                    return state;
                 }
             },
             saveAssembly: async (asm) => {
                 if (isLocal) {
                     await fetch(`/api/assemblies/${asm.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(asm) });
                 } else {
+                    let asmCopy = { ...asm };
+                    if (asmCopy.imageUrl && asmCopy.imageUrl.startsWith('data:')) {
+                        asmCopy.imageUrl = 'FIREBASE_STORAGE';
+                    }
                     const doc = await db.collection('app').doc('state').get();
                     if (doc.exists) {
                         let { assemblies, currentAsmId, products, currentProductId } = doc.data();
-                        assemblies = assemblies.map(a => a.id === asm.id ? asm : a);
+                        assemblies = assemblies.map(a => a.id === asmCopy.id ? asmCopy : a);
                         await db.collection('app').doc('state').set({ assemblies, currentAsmId, products, currentProductId });
                     }
                 }
@@ -202,6 +245,7 @@
                 if (isLocal) {
                     const res = await fetch(`/api/assemblies/${id}`, { method: 'DELETE' }); return res.json();
                 } else {
+                    await db.collection('images').doc(id).delete().catch(() => {});
                     const doc = await db.collection('app').doc('state').get();
                     if (doc.exists) {
                         let { assemblies, currentAsmId, products, currentProductId } = doc.data();
@@ -218,6 +262,11 @@
                 if (isLocal) {
                     await fetch('/api/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
                 } else {
+                    data.assemblies.forEach(asm => {
+                        if (asm.imageUrl && asm.imageUrl.startsWith('data:')) {
+                            asm.imageUrl = 'FIREBASE_STORAGE';
+                        }
+                    });
                     await db.collection('app').doc('state').set(data);
                 }
             },
@@ -895,10 +944,10 @@
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     
-                    // 최대 너비 800px 제한 (Firestore 1MB 용량 한도 초과 완벽 방지)
+                    // 해상도 향상 (최대 너비 2560px, 품질 0.95로 고화질 유지)
                     let width = img.width;
                     let height = img.height;
-                    const MAX_WIDTH = 800;
+                    const MAX_WIDTH = 2560;
                     if (width > MAX_WIDTH) {
                         height = Math.round((height * MAX_WIDTH) / width);
                         width = MAX_WIDTH;
@@ -908,14 +957,18 @@
                     canvas.height = height;
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    // WebP 포맷으로 압축 (품질 0.4로 용량 극한 최소화)
-                    let finalUrl = canvas.toDataURL('image/webp', 0.4);
+                    // WebP 포맷으로 압축 (품질 0.95)
+                    let finalUrl = canvas.toDataURL('image/webp', 0.95);
                     
-                    // Firebase Storage 업로드는 권한 및 CORS 문제로 무한 대기(Hang)가 발생할 수 있으므로,
-                    // 압축된 Base64(WebP) 데이터를 직접 Firestore에 저장합니다.
+                    // Firestore 용량 한도를 우회하기 위해 이미지만 'images' 컬렉션에 독립 저장
+                    if (!isLocal) {
+                        await db.collection('images').doc(currentAsmId).set({ imageUrl: finalUrl });
+                    }
+                    
+                    // 상태 업데이트 (화면 표시용)
                     const nextAssemblies = assemblies.map(a => a.id === currentAsmId ? { ...a, imageUrl: finalUrl } : a);
                     setAssemblies(nextAssemblies);
-                    await saveToFirebase(nextAssemblies);
+                    await saveToFirebase(nextAssemblies); // saveAll에서 자동으로 finalUrl 대신 'FIREBASE_STORAGE'로 치환됨
                     
                     setPendingAiImage(null);
                     alert("도면 이미지가 성공적으로 변경되었습니다.");
