@@ -21,6 +21,10 @@
         }
       }
     </script>
+    <script type="module">
+      import { GoogleGenerativeAI } from "@google/generative-ai";
+      window.GoogleGenerativeAI = GoogleGenerativeAI;
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { 
@@ -138,7 +142,7 @@
     </script>
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module">
+    <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
 
         // ─────────────────────────── Firebase 초기화 ───────────────────────────
@@ -982,7 +986,8 @@
 
             const processInventoryImageWithGemini = async (base64Image, instruction) => {
               if (!localApiKey) throw new Error("분석을 위해 설정에서 Gemini API Key를 입력해주세요.");
-              const { GoogleGenerativeAI } = await import("@google/generative-ai");
+              const GoogleGenerativeAI = window.GoogleGenerativeAI;
+              if (!GoogleGenerativeAI) throw new Error("AI 엔진 로딩 중입니다. 잠시 후 다시 시도해주세요.");
               const genAI = new GoogleGenerativeAI(localApiKey);
               const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
